@@ -42,7 +42,7 @@ export default function ToDoModal({
     }
     if (isOpen) {
       window.addEventListener('keydown', handleKeyPress)
-    } 
+    }
     return () => {
       window.removeEventListener('keydown', handleKeyPress)
     }

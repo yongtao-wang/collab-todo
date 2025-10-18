@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { AUTH_URL } from '@/utils/config'
+import { getCookie } from '@/utils/cookies'
 
 interface AuthContextType {
   userId: string | null
@@ -16,7 +17,6 @@ interface AuthContextType {
   accessToken: string | null
   login: (userId: string, token: string) => void
   logout: () => void
-  checkAuthStatus: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -26,47 +26,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false)
   const [accessToken, setAccessToken] = useState<string | null>(null)
 
-  // Check if user is already logged in via JWT tokens
-  const checkAuthStatus = async () => {
-    const token = localStorage.getItem('access_token')
+  const refreshAccessToken = async () => {
+    try {
+      const csrfToken = getCookie('csrf_refresh_token') || ''
+      const response = await fetch(`${AUTH_URL}/refresh`, {
+        method: 'POST',
+        credentials: 'include', // Send cookies
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken,
+        },
+      })
 
-    if (token) {
-      try {
-        // TODO: Call backend service to validate access token
-        const response = await fetch(`${AUTH_URL}/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-
-        if (response.ok) {
-          const userData = await response.json()
-          setUserId(userData.user_id)
-          setAccessToken(token)
-          setIsLoggedIn(true)
-        } else {
-          // Token is invalid, clear it
-          localStorage.removeItem('access_token')
-          setUserId(null)
-          setAccessToken(null)
-          setIsLoggedIn(false)
-        }
-      } catch (error) {
-        console.error('Auth validation error:', error)
-        // Clear invalid tokens
-        localStorage.removeItem('access_token')
-        setUserId(null)
+      if (response.ok) {
+        const data = await response.json()
+        const newAccessToken = data.access_token
+        setAccessToken(newAccessToken)
+        return newAccessToken
+      } else {
         setAccessToken(null)
-        setIsLoggedIn(false)
+        return null
       }
+    } catch (error) {
+      setAccessToken(null)
+      return null
     }
   }
 
-  // Check auth status on mount
   useEffect(() => {
-    checkAuthStatus()
+    const tryRefreshAndFetchUser = async () => {
+      const token = await refreshAccessToken()
+      if (token) {
+        // Now fetch user info
+        try {
+          const response = await fetch(`${AUTH_URL}/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (response.ok) {
+            const userData = await response.json()
+            setUserId(userData.user_id)
+            setIsLoggedIn(true)
+          } else {
+            setUserId(null)
+            setIsLoggedIn(false)
+            setAccessToken(null)
+          }
+        } catch {
+          setUserId(null)
+          setIsLoggedIn(false)
+          setAccessToken(null)
+        }
+      } else {
+        setUserId(null)
+        setIsLoggedIn(false)
+        setAccessToken(null)
+      }
+    }
+    tryRefreshAndFetchUser()
   }, [])
 
   const login = (userId: string, access_token: string) => {
-    localStorage.setItem('access_token', access_token)
     setUserId(userId)
     setAccessToken(access_token)
     setIsLoggedIn(true)
@@ -79,13 +98,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetch(`${AUTH_URL}/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}` },
+          credentials: 'include',
         })
       }
     } catch (error) {
       console.error('Logout error:', error)
     } finally {
-      // Clear local state and tokens
-      localStorage.removeItem('access_token')
+      // Clear access token and user info
+      setAccessToken(null)
       setUserId(null)
       setAccessToken(null)
       setIsLoggedIn(false)
@@ -98,7 +118,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     accessToken,
     login,
     logout,
-    checkAuthStatus,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

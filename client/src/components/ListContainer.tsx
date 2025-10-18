@@ -2,12 +2,13 @@
 
 import { Socket, io } from 'socket.io-client'
 import { TodoItem, TodoList } from '@/types/todo'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { SOCKET_URL } from '@/utils/config'
 import ShareModal from './ShareModal'
 import ToDoModal from './ToDoModal'
 import localforage from 'localforage'
+import { useAuth } from '@/contexts/AuthContext'
 
 localforage.config({
   name: 'collaborative_todo_app',
@@ -28,6 +29,7 @@ export default function ListContainer({
   onMessage,
   onError,
 }: ListContainerProps) {
+  const { accessToken } = useAuth()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [lists, setLists] = useState<Record<string, TodoList>>({})
   const [activeListId, setActiveListId] = useState<string | null>(null)
@@ -39,21 +41,8 @@ export default function ListContainer({
   const [newListName, setNewListName] = useState('')
   const [isCreatingList, setIsCreatingList] = useState(false)
 
-  const [revState, setRevState] = useState<Record<string, number>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(REV_STATE) || '{}')
-    } catch {
-      return {}
-    }
-  })
-
-  const [serverEpoch, setServerEpoch] = useState<string>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(SERVER_EPOCH) || '')
-    } catch {
-      return ''
-    }
-  })
+  const revStateRef = useRef<Record<string, number>>({})
+  const serverEpochRef = useRef<string>('')
 
   const updateLocalCache = async (
     listId: string,
@@ -99,6 +88,20 @@ export default function ListContainer({
   }
 
   useEffect(() => {
+    // Initialize revStateRef and serverEpochRef from localStorage
+    try {
+      revStateRef.current = JSON.parse(localStorage.getItem(REV_STATE) ?? '{}')
+    } catch {
+      revStateRef.current = {}
+    }
+    try {
+      serverEpochRef.current =
+        JSON.parse(localStorage.getItem(SERVER_EPOCH) ?? '') || ''
+    } catch {
+      serverEpochRef.current = ''
+    }
+
+    // Load cached lists from localForage
     loadLocalCachedLists()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -106,11 +109,16 @@ export default function ListContainer({
   useEffect(() => {
     // Initialize socket connection
     console.log('Connecting to socket:', SOCKET_URL)
+
+    let retryDelay = 1000
+
     const s = io(SOCKET_URL, {
       transports: ['websocket'], // Force WebSocket (prevent polling)
-      auth: {
-        token: localStorage.getItem('access_token'),
-      },
+      auth: { token: accessToken },
+      reconnection: false, // Disable built-in reconnection
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
     })
     setSocket(s)
 
@@ -120,9 +128,10 @@ export default function ListContainer({
       setIsConnected(true)
       s.emit('join', {
         user_id: userId,
-        revState: revState,
-        epoch: serverEpoch,
+        revState: revStateRef.current,
+        epoch: serverEpochRef.current,
       })
+      retryDelay = 1000
     })
 
     s.on('disconnect', () => {
@@ -130,9 +139,21 @@ export default function ListContainer({
       setIsConnected(false)
     })
 
+    s.on('connect_error', (err) => {
+      console.warn('Socket connect_error:', err.message)
+      setTimeout(() => s.connect(), retryDelay)
+      // Exponential backoff
+      retryDelay = Math.min(retryDelay * 2, 10000) // max 10s
+    })
+
     s.on('error', (errorData) => {
       console.error('Socket error:', errorData)
       const errorMessage = errorData.message || 'Connection error'
+      onError?.(errorMessage)
+    })
+
+    s.on('permission_error', (data) => {
+      const errorMessage = data.message || 'Permission denied'
       onError?.(errorMessage)
     })
 
@@ -143,8 +164,8 @@ export default function ListContainer({
 
         // Update server epoch
         if (data.server_epoch) {
-          setServerEpoch(data.server_epoch)
-          localStorage.setItem(SERVER_EPOCH, data.server_epoch)
+          serverEpochRef.current = data.server_epoch
+          localStorage.setItem(SERVER_EPOCH, JSON.stringify(data.server_epoch))
         }
 
         const currentList = {
@@ -165,20 +186,22 @@ export default function ListContainer({
         // Set first list as active if none selected
         setActiveListId((current) => current || list_id)
 
-        setRevState((prev) => ({
-          ...prev,
+        revStateRef.current = {
+          ...revStateRef.current,
           [list_id]: rev,
-        }))
+        }
+        localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
       }
     })
 
     s.on('list_synced', (data) => {
       console.log('list_synced:', data)
       if (data) {
-        setRevState((prev) => ({
-          ...prev,
+        revStateRef.current = {
+          ...revStateRef.current,
           [data.list_id]: data.rev,
-        }))
+        }
+        localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
       }
     })
 
@@ -197,10 +220,11 @@ export default function ListContainer({
           },
         }
       })
-      setRevState((prev) => ({
-        ...prev,
+      revStateRef.current = {
+        ...revStateRef.current,
         [item.list_id]: data.rev,
-      }))
+      }
+      localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
       // Add to localForage cache
       void updateLocalCache(item.list_id, (cached) => ({
         ...cached,
@@ -224,10 +248,11 @@ export default function ListContainer({
           },
         }
       })
-      setRevState((prev) => ({
-        ...prev,
+      revStateRef.current = {
+        ...revStateRef.current,
         [list_id]: rev,
-      }))
+      }
+      localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
 
       // Update localForage cache
       void updateLocalCache(list_id, (cached) => ({
@@ -253,10 +278,12 @@ export default function ListContainer({
           },
         }
       })
-      setRevState((prev) => ({
-        ...prev,
+
+      revStateRef.current = {
+        ...revStateRef.current,
         [list_id]: rev,
-      }))
+      }
+      localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
 
       // Update localForage cache
       void updateLocalCache(list_id, (cached) => {
@@ -285,10 +312,11 @@ export default function ListContainer({
       // Set new list as active
       setActiveListId(list_id)
 
-      setRevState((prev) => ({
-        ...prev,
+      revStateRef.current = {
+        ...revStateRef.current,
         [list_id]: rev,
-      }))
+      }
+      localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
 
       void localforage.setItem(list_id, newList)
 
@@ -306,8 +334,8 @@ export default function ListContainer({
       // You could show a success toast notification here
       s.emit('join', {
         user_id: userId,
-        revState: revState,
-        epoch: serverEpoch,
+        revState: revStateRef.current,
+        epoch: serverEpochRef.current,
       })
       onMessage?.(data.message)
     })
@@ -323,10 +351,6 @@ export default function ListContainer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
-
-  useEffect(() => {
-    localStorage.setItem(REV_STATE, JSON.stringify(revState))
-  }, [revState])
 
   const addTodo = () => {
     if (!socket || !activeListId || !newTodo.trim()) return

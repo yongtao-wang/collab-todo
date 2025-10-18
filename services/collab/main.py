@@ -235,7 +235,7 @@ def handle_connect(auth):
         print(f'User {user_id} connected via WebSocket')
     except ExpiredSignatureError:
         print('Token expired')
-        emit('error', {'message': 'Token expired'}, to=request.sid)
+        emit('auth_error', {'message': 'Token expired'}, to=request.sid)
         return False
     except Exception as e:
         print(f'Invalid token: {e}')
@@ -254,7 +254,7 @@ def handle_join(user_id, data):
     client_epoch = data.get('epoch', '')
     client_state = data.get('revState', {})
     if not user_id:
-        emit("error", {"message": "Missing user_id"}, to=request.sid)
+        emit("action_error", {"message": "Missing user_id"}, to=request.sid)
         return
 
     try:
@@ -280,12 +280,12 @@ def handle_join(user_id, data):
                     "items": STATE[list_id]["items"],
                     'server_epoch': SERVER_EPOCH,
                 }
-                emit("list_snapshot", response_data, to=list_id)
+                emit("list_snapshot", response_data, to=request.sid)
             else:
                 emit('list_synced', {'rev': current_rev})
     except Exception as e:
         print(f"Error in handle_join: {e}")
-        emit("error", {"message": f"Failed to join: {str(e)}"}, to=request.sid)
+        emit("action_error", {"message": f"Failed to join: {str(e)}"}, to=request.sid)
 
 
 @socketio.on("item_add")
@@ -295,7 +295,7 @@ def handle_add(user_id, data):
 
     if not check_user_can_edit_list(list_id, user_id):
         emit(
-            'error',
+            'permission_error',
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
@@ -323,7 +323,9 @@ def handle_add(user_id, data):
     # Local cache then save to Supabase
     STATE[list_id]["items"][item_id] = item
     STATE[list_id]["rev"] += 1
-    supabase.table("todo_items").insert(item).execute()
+    res = supabase.table("todo_items").insert(item).execute()
+    item['created_at'] = res.data[0]['created_at']
+    item['updated_at'] = res.data[0]['updated_at']
 
     emit("item_added", {"rev": STATE[list_id]["rev"], "item": item}, to=list_id)
     persist_state(list_id)
@@ -335,7 +337,7 @@ def handle_update(user_id, data):
     list_id = data.get("list_id")
     if not check_user_can_edit_list(list_id, user_id):
         emit(
-            'error',
+            'permission_error',
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
@@ -353,7 +355,7 @@ def handle_update(user_id, data):
             item[field] = data[field]
     STATE[list_id]["rev"] += 1
 
-    supabase.table("todo_items").update(
+    res = supabase.table("todo_items").update(
         {
             "name": item["name"],
             "description": item["description"],
@@ -363,6 +365,10 @@ def handle_update(user_id, data):
             "media_url": item["media_url"],
         }
     ).eq("id", item_id).execute()
+
+    item['created_at'] = res.data[0]['created_at']
+    item['updated_at'] = res.data[0]['updated_at']
+    STATE[list_id][item_id] = item
 
     emit(
         "item_updated",
@@ -378,7 +384,7 @@ def handle_delete(user_id, data):
     list_id = data.get("list_id")
     if not check_user_can_edit_list(list_id, user_id):
         emit(
-            'error',
+            'permission_error',
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
@@ -409,7 +415,7 @@ def handle_share(user_id, data):
     owner_user_id = user_id
 
     if not list_id or not shared_user_id:
-        emit("error", {"message": "Missing list_id or shared_user_id"}, to=request.sid)
+        emit("action_error", {"message": "Missing list_id or shared_user_id"}, to=request.sid)
         return
 
     try:
@@ -424,7 +430,7 @@ def handle_share(user_id, data):
 
         if not list_res.data:
             emit(
-                "error",
+                "action_error",
                 {"message": "Sharing List Error: List not found"},
                 to=request.sid,
             )
@@ -435,7 +441,7 @@ def handle_share(user_id, data):
         # Verify the requesting user has permission to share (must be owner)
         if list_owner != owner_user_id:
             emit(
-                "error",
+                "permission_error",
                 {"message": "Sharing List Error: Only the list owner can share"},
             )
             return
@@ -443,7 +449,7 @@ def handle_share(user_id, data):
         # Check if user is trying to share with themselves
         if shared_user_id == owner_user_id:
             emit(
-                "error",
+                "action_error",
                 {"message": "Sharing List Error: Cannot share with yourself"},
                 to=request.sid,
             )

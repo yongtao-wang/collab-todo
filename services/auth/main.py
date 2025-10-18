@@ -5,15 +5,10 @@ import bcrypt
 from dotenv import load_dotenv
 from flask import Blueprint, Flask, jsonify, make_response, request
 from flask_cors import CORS
-from flask_jwt_extended import (
-    JWTManager,
-    create_access_token,
-    create_refresh_token,
-    get_jwt_identity,
-    jwt_required,
-    set_refresh_cookies,
-    unset_jwt_cookies,
-)
+from flask_jwt_extended import (JWTManager, create_access_token,
+                                create_refresh_token, get_csrf_token,
+                                get_jwt_identity, jwt_required,
+                                set_refresh_cookies, unset_jwt_cookies)
 from supabase import Client, create_client
 
 load_dotenv()
@@ -26,9 +21,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
 app = Flask(__name__)
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret')
+app.config["JWT_COOKIE_CSRF_PROTECT"] = True
 app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
 app.config["JWT_COOKIE_SECURE"] = True if ENV == 'production' else False
-app.config["JWT_COOKIE_SAMESITE"] = "None"
+app.config["JWT_COOKIE_SAMESITE"] = "Lax"
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=20)  # TTL 20 min
 app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=10)  # TTL 10 days
 CORS(app, supports_credentials=True)
@@ -75,7 +71,17 @@ def login():
     refresh_token = create_refresh_token(identity=user['id'])
 
     response = make_response(
-        jsonify({'access_token': access_token, 'user_id': user['id']})
+        jsonify(
+            {
+                'access_token': access_token,
+                'user_id': user['id'],                
+            }
+        )
+    )
+    response.set_cookie(
+        'csrf_refresh_token',
+        get_csrf_token(refresh_token),
+        httponly=False,
     )
     set_refresh_cookies(response, refresh_token)
     return response
@@ -85,7 +91,9 @@ def login():
 @jwt_required(refresh=True)
 def refresh():
     user_id = get_jwt_identity()
-    access_token = create_access_token(identity=user_id)
+    access_token = create_access_token(
+        identity=user_id, expires_delta=timedelta(minutes=15)
+    )
     return jsonify({'access_token': access_token})
 
 
