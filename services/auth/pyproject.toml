@@ -1,0 +1,15 @@
+[project]
+name = "auth"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "bcrypt>=5.0.0",
+    "flask>=3.1.2",
+    "flask-cors>=6.0.1",
+    "flask-jwt-extended>=4.7.1",
+    "isort>=7.0.0",
+    "python-dotenv>=1.1.1",
+    "supabase>=2.22.0",
+]

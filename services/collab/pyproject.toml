@@ -1,0 +1,17 @@
+[project]
+name = "collab"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "flask>=3.1.2",
+    "flask-jwt-extended>=4.7.1",
+    "flask-socketio>=5.5.1",
+    "gevent>=25.9.1",
+    "gevent-websocket>=0.10.1",
+    "isort>=7.0.0",
+    "python-dotenv>=1.1.1",
+    "redis>=6.4.0",
+    "supabase>=2.22.0",
+]
