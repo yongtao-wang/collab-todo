@@ -107,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear access token and user info
       setAccessToken(null)
       setUserId(null)
-      setAccessToken(null)
       setIsLoggedIn(false)
     }
   }

@@ -27,8 +27,9 @@ export default function Home() {
   }
 
   const handleLogout = async () => {
-    await logout()
-    await localforage.clear()
+    logout()
+    localforage.clear()
+    localStorage.clear()
     handleMessage('Successfully logged out!')
   }
 

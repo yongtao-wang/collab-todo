@@ -9,6 +9,7 @@ import ShareModal from './ShareModal'
 import ToDoModal from './ToDoModal'
 import localforage from 'localforage'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTodoStore } from '@/utils/todoStore'
 
 localforage.config({
   name: 'collaborative_todo_app',
@@ -29,30 +30,62 @@ export default function ListContainer({
   onMessage,
   onError,
 }: ListContainerProps) {
+  // Token, connection state, modals
   const { accessToken } = useAuth()
   const [socket, setSocket] = useState<Socket | null>(null)
-  const [lists, setLists] = useState<Record<string, TodoList>>({})
-  const [activeListId, setActiveListId] = useState<string | null>(null)
-  const [newTodo, setNewTodo] = useState('')
-  const [isConnected, setIsConnected] = useState(false)
   const [selectedTodo, setSelectedTodo] = useState<TodoItem | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+
+  // New todo and list creation states
+  const [newTodo, setNewTodo] = useState('')
   const [newListName, setNewListName] = useState('')
   const [isCreatingList, setIsCreatingList] = useState(false)
 
-  // Filter and sort states
-  const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [filterDueDate, setFilterDueDate] = useState<string>('all')
-  const [sortBy, setSortBy] = useState<'name' | 'due_date' | 'status'>('name')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  // Filter and sort states - use granular selectors for better reactivity
+  const lists = useTodoStore((s) => s.lists)
+  const activeListId = useTodoStore((s) => s.activeListId)
+  const filterStatus = useTodoStore((s) => s.filterStatus)
+  const setFilterStatus = useTodoStore((s) => s.setFilterStatus)
+  const filterDueDate = useTodoStore((s) => s.filterDueDate)
+  const setFilterDueDate = useTodoStore((s) => s.setFilterDueDate)
+  const sortBy = useTodoStore((s) => s.sortBy)
+  const setSortBy = useTodoStore((s) => s.setSortBy)
+  const sortOrder = useTodoStore((s) => s.sortOrder)
+  const setSortOrder = useTodoStore((s) => s.setSortOrder)
+  const isConnected = useTodoStore((s) => s.isConnected)
+  const setIsConnected = useTodoStore((s) => s.setIsConnected)
+  const setLists = useTodoStore((s) => s.setLists)
+  const setActiveListId = useTodoStore((s) => s.setActiveListId)
+  const resetFilters = useTodoStore((s) => s.resetFilters)
 
+  // Zustand actions for list and item operations
+  const addList = useTodoStore((s) => s.addList)
+  const updateListRev = useTodoStore((s) => s.updateListRev)
+  const setListSnapshot = useTodoStore((s) => s.setListSnapshot)
+  const addItem = useTodoStore((s) => s.addItem)
+  const updateItem = useTodoStore((s) => s.updateItem)
+  const removeItem = useTodoStore((s) => s.removeItem)
+
+  // Refs to hold rev state and server epoch across renders
   const revStateRef = useRef<Record<string, number>>({})
   const serverEpochRef = useRef<string>('')
 
-  const activeList = activeListId ? lists[activeListId] : null
+  // Select active list data directly - Zustand will handle reactivity properly
+  const activeList = useTodoStore((state) =>
+    state.activeListId ? state.lists[state.activeListId] : null
+  )
   const activeTodos = activeList?.todos || {}
   const activeListName = activeList?.listName || 'Select a list'
+
+  // Debug: Log when activeTodos changes (remove this in production)
+  useEffect(() => {
+    console.log(
+      'activeTodos updated:',
+      Object.keys(activeTodos).length,
+      'items'
+    )
+  }, [activeTodos])
 
   const now = new Date()
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -192,16 +225,16 @@ export default function ListContainer({
           rev: rev,
         }
 
-        setLists((prev) => ({
-          ...prev,
-          [list_id]: currentList,
-        }))
+        // Use Zustand action to set list snapshot
+        setListSnapshot(list_id, list_name, items, rev)
 
         // Cache the list in localForage
         localforage.setItem(list_id, currentList)
 
         // Set first list as active if none selected
-        setActiveListId((current) => current || list_id)
+        if (!activeListId) {
+          setActiveListId(list_id)
+        }
 
         revStateRef.current = {
           ...revStateRef.current,
@@ -214,6 +247,9 @@ export default function ListContainer({
     s.on('list_synced', (data) => {
       console.log('list_synced:', data)
       if (data) {
+        // Use Zustand action to update list revision
+        updateListRev(data.list_id, data.rev)
+
         revStateRef.current = {
           ...revStateRef.current,
           [data.list_id]: data.rev,
@@ -225,23 +261,17 @@ export default function ListContainer({
     s.on('item_added', (data) => {
       console.log('item_added:', data)
       const item = data.item
-      setLists((prev) => {
-        const list = prev[item.list_id]
-        if (!list) return prev
-        return {
-          ...prev,
-          [item.list_id]: {
-            ...list,
-            todos: { ...list.todos, [item.id]: item },
-            rev: data.rev,
-          },
-        }
-      })
+
+      // Use Zustand action to add item
+      addItem(item.list_id, item)
+      updateListRev(item.list_id, data.rev)
+
       revStateRef.current = {
         ...revStateRef.current,
         [item.list_id]: data.rev,
       }
       localStorage.setItem(REV_STATE, JSON.stringify(revStateRef.current))
+
       // Add to localForage cache
       void updateLocalCache(item.list_id, (cached) => ({
         ...cached,
@@ -253,18 +283,11 @@ export default function ListContainer({
     s.on('item_updated', (data) => {
       console.log('item_updated:', data)
       const { item, list_id, rev } = data
-      setLists((prev) => {
-        const list = prev[list_id]
-        if (!list) return prev
-        return {
-          ...prev,
-          [list_id]: {
-            ...list,
-            todos: { ...list.todos, [item.id]: item },
-            rev: rev,
-          },
-        }
-      })
+
+      // Use Zustand action to update item
+      updateItem(list_id, item.id, item)
+      updateListRev(list_id, rev)
+
       revStateRef.current = {
         ...revStateRef.current,
         [list_id]: rev,
@@ -281,20 +304,10 @@ export default function ListContainer({
 
     s.on('item_deleted', (data) => {
       const { item_id, list_id, rev } = data
-      setLists((prev) => {
-        const list = prev[list_id]
-        if (!list) return prev
-        const updatedTodos = { ...list.todos }
-        delete updatedTodos[item_id]
-        return {
-          ...prev,
-          [list_id]: {
-            ...list,
-            todos: updatedTodos,
-            rev: rev,
-          },
-        }
-      })
+
+      // Use Zustand action to remove item
+      removeItem(list_id, item_id)
+      updateListRev(list_id, rev)
 
       revStateRef.current = {
         ...revStateRef.current,
@@ -321,10 +334,8 @@ export default function ListContainer({
         rev,
       }
 
-      setLists((prev) => ({
-        ...prev,
-        [list_id]: newList,
-      }))
+      // Use Zustand action to add list
+      addList(newList)
 
       // Set new list as active
       setActiveListId(list_id)
@@ -485,9 +496,10 @@ export default function ListContainer({
       })
     }
     return todos
-  }, [activeTodos, filterStatus, filterDueDate])
+  }, [activeTodos, filterStatus, filterDueDate, today, tomorrow, nextWeek])
 
   const filteredAndSortedTodos = useMemo(() => {
+    // Use layered useMemo for filtering and sorting
     const sorted = [...filteredTodos]
     sorted.sort((a, b) => {
       let comparison = 0
@@ -643,176 +655,25 @@ export default function ListContainer({
         ) : (
           <div className='flex-1 overflow-y-auto p-8'>
             <div className='w-full max-w-4xl mx-auto'>
-            {/* Header */}
-            <div className='flex items-center justify-between mb-6'>
-              <div>
-                <h1 className='text-3xl font-bold text-gray-900'>
-                  {activeListName}
-                </h1>
-                <div className='text-sm text-gray-600 mt-2'>
-                  {Object.values(activeTodos).length} tasks
+              {/* Header */}
+              <div className='flex items-center justify-between mb-6'>
+                <div>
+                  <h1 className='text-3xl font-bold text-gray-900'>
+                    {activeListName}
+                  </h1>
+                  <div className='text-sm text-gray-600 mt-2'>
+                    {Object.values(activeTodos).length} tasks
+                  </div>
                 </div>
-              </div>
 
-              {/* Share Button */}
-              <button
-                onClick={() => setIsShareModalOpen(true)}
-                className='flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium'
-                disabled={!isConnected}
-              >
-                <svg
-                  className='w-5 h-5'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'
-                >
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z'
-                  />
-                </svg>
-                <span>Share</span>
-              </button>
-            </div>
-
-            {/* Add Todo Form */}
-            <div className='bg-white rounded-lg shadow p-4 mb-6'>
-              <div className='flex space-x-3'>
-                <input
-                  className='flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  value={newTodo}
-                  onChange={(e) => setNewTodo(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder='What needs to be done?'
-                  disabled={!isConnected}
-                />
+                {/* Share Button */}
                 <button
-                  className='px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-                  onClick={addTodo}
-                  disabled={!isConnected || !newTodo.trim()}
+                  onClick={() => setIsShareModalOpen(true)}
+                  className='flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium'
+                  disabled={!isConnected}
                 >
-                  Add Task
-                </button>
-              </div>
-            </div>
-
-            {/* Filter and Sort Controls */}
-            <div className='bg-white rounded-lg shadow p-4 mb-6'>
-              <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
-                {/* Filter by Status */}
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Filter by Status
-                  </label>
-                  <select
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  >
-                    <option value='all'>All Status</option>
-                    <option value='not_started'>Not Started</option>
-                    <option value='in_progress'>In Progress</option>
-                    <option value='completed'>Completed</option>
-                  </select>
-                </div>
-
-                {/* Filter by Due Date */}
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Filter by Due Date
-                  </label>
-                  <select
-                    value={filterDueDate}
-                    onChange={(e) => setFilterDueDate(e.target.value)}
-                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  >
-                    <option value='all'>All Dates</option>
-                    <option value='overdue'>Overdue</option>
-                    <option value='today'>Today</option>
-                    <option value='tomorrow'>Tomorrow</option>
-                    <option value='this_week'>This Week</option>
-                    <option value='no_date'>No Due Date</option>
-                  </select>
-                </div>
-
-                {/* Sort By */}
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Sort By
-                  </label>
-                  <select
-                    value={sortBy}
-                    onChange={(e) =>
-                      setSortBy(
-                        e.target.value as 'name' | 'due_date' | 'status'
-                      )
-                    }
-                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  >
-                    <option value='name'>Name</option>
-                    <option value='due_date'>Due Date</option>
-                    <option value='status'>Status</option>
-                  </select>
-                </div>
-
-                {/* Sort Order */}
-                <div>
-                  <label className='block text-sm font-medium text-gray-700 mb-2'>
-                    Order
-                  </label>
-                  <select
-                    value={sortOrder}
-                    onChange={(e) =>
-                      setSortOrder(e.target.value as 'asc' | 'desc')
-                    }
-                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  >
-                    <option value='asc'>Ascending</option>
-                    <option value='desc'>Descending</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Results Info and Reset Filters */}
-              <div className='mt-4 flex items-center justify-between'>
-                <div className='text-sm text-gray-600'>
-                  Showing{' '}
-                  <span className='font-semibold'>
-                    {filteredAndSortedTodos.length}
-                  </span>{' '}
-                  of{' '}
-                  <span className='font-semibold'>
-                    {Object.values(activeTodos).length}
-                  </span>{' '}
-                  tasks
-                </div>
-                {(filterStatus !== 'all' ||
-                  filterDueDate !== 'all' ||
-                  sortBy !== 'name' ||
-                  sortOrder !== 'asc') && (
-                  <button
-                    onClick={() => {
-                      setFilterStatus('all')
-                      setFilterDueDate('all')
-                      setSortBy('name')
-                      setSortOrder('asc')
-                    }}
-                    className='text-sm text-blue-600 hover:text-blue-700 font-medium'
-                  >
-                    Reset Filters & Sorting
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Todo List */}
-            <div className='space-y-3'>
-              {filteredAndSortedTodos.length === 0 ? (
-                <div className='text-center py-12 bg-white rounded-lg shadow'>
                   <svg
-                    className='w-16 h-16 text-gray-300 mx-auto mb-4'
+                    className='w-5 h-5'
                     fill='none'
                     stroke='currentColor'
                     viewBox='0 0 24 24'
@@ -821,104 +682,250 @@ export default function ListContainer({
                       strokeLinecap='round'
                       strokeLinejoin='round'
                       strokeWidth={2}
-                      d='M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
+                      d='M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z'
                     />
                   </svg>
-                  <h3 className='text-lg font-medium text-gray-500 mb-2'>
-                    {Object.values(activeTodos).length === 0
-                      ? 'No tasks yet'
-                      : 'No tasks match your filters'}
-                  </h3>
-                  <p className='text-gray-400'>
-                    {Object.values(activeTodos).length === 0
-                      ? 'Add your first task to get started!'
-                      : 'Try adjusting your filters to see more tasks'}
-                  </p>
-                </div>
-              ) : (
-                filteredAndSortedTodos.map((todo) => (
-                  <div
-                    key={todo.id}
-                    className={`bg-white rounded-lg shadow p-4 border-l-4 transition-all cursor-pointer ${
-                      todo.done
-                        ? 'border-l-green-500 opacity-75'
-                        : 'border-l-blue-500 hover:shadow-md'
-                    }`}
-                    onClick={() => handleTodoClick(todo)}
+                  <span>Share</span>
+                </button>
+              </div>
+
+              {/* Add Todo Form */}
+              <div className='bg-white rounded-lg shadow p-4 mb-6'>
+                <div className='flex space-x-3'>
+                  <input
+                    className='flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    value={newTodo}
+                    onChange={(e) => setNewTodo(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    placeholder='What needs to be done?'
+                    disabled={!isConnected}
+                  />
+                  <button
+                    className='px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
+                    onClick={addTodo}
+                    disabled={!isConnected || !newTodo.trim()}
                   >
-                    <div className='flex items-center justify-between'>
-                      <div className='flex items-center space-x-3 flex-1'>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation() // Prevent triggering the card click
-                            toggleDone(todo)
-                          }}
-                          className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                            todo.done
-                              ? 'bg-green-500 border-green-500 text-white'
-                              : 'border-gray-300 hover:border-green-400'
-                          }`}
-                          disabled={!isConnected}
-                        >
-                          {todo.done && (
-                            <svg
-                              className='w-3 h-3'
-                              fill='currentColor'
-                              viewBox='0 0 20 20'
-                            >
-                              <path
-                                fillRule='evenodd'
-                                d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z'
-                                clipRule='evenodd'
-                              />
-                            </svg>
-                          )}
-                        </button>
+                    Add Task
+                  </button>
+                </div>
+              </div>
 
-                        <div className='flex-1 min-w-0'>
-                          <h3
-                            className={`font-medium text-gray-900 ${
-                              todo.done ? 'line-through text-gray-500' : ''
+              {/* Filter and Sort Controls */}
+              <div className='bg-white rounded-lg shadow p-4 mb-6'>
+                <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+                  {/* Filter by Status */}
+                  <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                      Filter by Status
+                    </label>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    >
+                      <option value='all'>All Status</option>
+                      <option value='not_started'>Not Started</option>
+                      <option value='in_progress'>In Progress</option>
+                      <option value='completed'>Completed</option>
+                    </select>
+                  </div>
+
+                  {/* Filter by Due Date */}
+                  <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                      Filter by Due Date
+                    </label>
+                    <select
+                      value={filterDueDate}
+                      onChange={(e) => setFilterDueDate(e.target.value)}
+                      className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    >
+                      <option value='all'>All Dates</option>
+                      <option value='overdue'>Overdue</option>
+                      <option value='today'>Today</option>
+                      <option value='tomorrow'>Tomorrow</option>
+                      <option value='this_week'>This Week</option>
+                      <option value='no_date'>No Due Date</option>
+                    </select>
+                  </div>
+
+                  {/* Sort By */}
+                  <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                      Sort By
+                    </label>
+                    <select
+                      value={sortBy}
+                      onChange={(e) =>
+                        setSortBy(
+                          e.target.value as 'name' | 'due_date' | 'status'
+                        )
+                      }
+                      className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    >
+                      <option value='name'>Name</option>
+                      <option value='due_date'>Due Date</option>
+                      <option value='status'>Status</option>
+                    </select>
+                  </div>
+
+                  {/* Sort Order */}
+                  <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-2'>
+                      Order
+                    </label>
+                    <select
+                      value={sortOrder}
+                      onChange={(e) =>
+                        setSortOrder(e.target.value as 'asc' | 'desc')
+                      }
+                      className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    >
+                      <option value='asc'>Ascending</option>
+                      <option value='desc'>Descending</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Results Info and Reset Filters */}
+                <div className='mt-4 flex items-center justify-between'>
+                  <div className='text-sm text-gray-600'>
+                    Showing{' '}
+                    <span className='font-semibold'>
+                      {filteredAndSortedTodos.length}
+                    </span>{' '}
+                    of{' '}
+                    <span className='font-semibold'>
+                      {Object.values(activeTodos).length}
+                    </span>{' '}
+                    tasks
+                  </div>
+                  {(filterStatus !== 'all' ||
+                    filterDueDate !== 'all' ||
+                    sortBy !== 'name' ||
+                    sortOrder !== 'asc') && (
+                    <button
+                      onClick={resetFilters}
+                      className='text-sm text-blue-600 hover:text-blue-700 font-medium'
+                    >
+                      Reset Filters & Sorting
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Todo List */}
+              <div className='space-y-3'>
+                {filteredAndSortedTodos.length === 0 ? (
+                  <div className='text-center py-12 bg-white rounded-lg shadow'>
+                    <svg
+                      className='w-16 h-16 text-gray-300 mx-auto mb-4'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4'
+                      />
+                    </svg>
+                    <h3 className='text-lg font-medium text-gray-500 mb-2'>
+                      {Object.values(activeTodos).length === 0
+                        ? 'No tasks yet'
+                        : 'No tasks match your filters'}
+                    </h3>
+                    <p className='text-gray-400'>
+                      {Object.values(activeTodos).length === 0
+                        ? 'Add your first task to get started!'
+                        : 'Try adjusting your filters to see more tasks'}
+                    </p>
+                  </div>
+                ) : (
+                  filteredAndSortedTodos.map((todo) => (
+                    <div
+                      key={todo.id}
+                      className={`bg-white rounded-lg shadow p-4 border-l-4 transition-all cursor-pointer ${
+                        todo.done
+                          ? 'border-l-green-500 opacity-75'
+                          : 'border-l-blue-500 hover:shadow-md'
+                      }`}
+                      onClick={() => handleTodoClick(todo)}
+                    >
+                      <div className='flex items-center justify-between'>
+                        <div className='flex items-center space-x-3 flex-1'>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation() // Prevent triggering the card click
+                              toggleDone(todo)
+                            }}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                              todo.done
+                                ? 'bg-green-500 border-green-500 text-white'
+                                : 'border-gray-300 hover:border-green-400'
                             }`}
+                            disabled={!isConnected}
                           >
-                            {todo.name}
-                          </h3>
-                          {todo.description && (
-                            <p
-                              className={`text-sm mt-1 ${
-                                todo.done ? 'text-gray-400' : 'text-gray-600'
-                              }`}
-                            >
-                              {todo.description}
-                            </p>
-                          )}
-
-                          <div className='flex items-center mt-2 space-x-3 text-xs text-gray-500'>
-                            <span
-                              className={`px-2 py-1 rounded-full font-medium ${
-                                todo.status === 'completed'
-                                  ? 'bg-green-100 text-green-700'
-                                  : todo.status === 'in_progress'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-gray-100 text-gray-700'
-                              }`}
-                            >
-                              {todo.status.replace('_', ' ').toUpperCase()}
-                            </span>
-                            {todo.due_date && (
-                              <span>
-                                Due:{' '}
-                                {new Date(todo.due_date).toLocaleDateString()}
-                              </span>
+                            {todo.done && (
+                              <svg
+                                className='w-3 h-3'
+                                fill='currentColor'
+                                viewBox='0 0 20 20'
+                              >
+                                <path
+                                  fillRule='evenodd'
+                                  d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z'
+                                  clipRule='evenodd'
+                                />
+                              </svg>
                             )}
+                          </button>
+
+                          <div className='flex-1 min-w-0'>
+                            <h3
+                              className={`font-medium text-gray-900 ${
+                                todo.done ? 'line-through text-gray-500' : ''
+                              }`}
+                            >
+                              {todo.name}
+                            </h3>
+                            {todo.description && (
+                              <p
+                                className={`text-sm mt-1 ${
+                                  todo.done ? 'text-gray-400' : 'text-gray-600'
+                                }`}
+                              >
+                                {todo.description}
+                              </p>
+                            )}
+
+                            <div className='flex items-center mt-2 space-x-3 text-xs text-gray-500'>
+                              <span
+                                className={`px-2 py-1 rounded-full font-medium ${
+                                  todo.status === 'completed'
+                                    ? 'bg-green-100 text-green-700'
+                                    : todo.status === 'in_progress'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {todo.status.replace('_', ' ').toUpperCase()}
+                              </span>
+                              {todo.due_date && (
+                                <span>
+                                  Due:{' '}
+                                  {new Date(todo.due_date).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
