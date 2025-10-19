@@ -160,6 +160,7 @@ export default function ListContainer({
     // Initialize socket connection
     console.log('Connecting to socket:', SOCKET_URL)
 
+    let reconnectTimer: NodeJS.Timeout | null = null
     let retryDelay = 1000
 
     const s = io(SOCKET_URL, {
@@ -187,13 +188,29 @@ export default function ListContainer({
     s.on('disconnect', () => {
       console.log('disconnected')
       setIsConnected(false)
+
+      // Custom reconnection logic with exponential backoff
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          s.connect()
+          reconnectTimer = null
+        }, retryDelay)
+        // Exponential backoff
+        retryDelay = Math.min(retryDelay * 2, 10000)
+      }
     })
 
     s.on('connect_error', (err) => {
       console.warn('Socket connect_error:', err.message)
-      setTimeout(() => s.connect(), retryDelay)
-      // Exponential backoff
-      retryDelay = Math.min(retryDelay * 2, 10000) // max 10s
+      // Custom reconnection logic with exponential backoff
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          s.connect()
+          reconnectTimer = null
+        }, retryDelay)
+        // Exponential backoff
+        retryDelay = Math.min(retryDelay * 2, 10000)
+      }
     })
 
     s.on('error', (errorData) => {
@@ -376,6 +393,7 @@ export default function ListContainer({
 
     return () => {
       s.disconnect()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])

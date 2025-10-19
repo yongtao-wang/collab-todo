@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import uuid
 from functools import wraps
@@ -6,7 +7,8 @@ from functools import wraps
 import redis
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
-from flask_jwt_extended import decode_token, JWTManager
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager, decode_token
 from flask_socketio import SocketIO, emit, join_room
 from jwt import ExpiredSignatureError
 from supabase import Client, create_client
@@ -16,10 +18,26 @@ load_dotenv()
 
 ENV = os.getenv('ENV')
 
+# Configure logging
+logger = logging.getLogger(__name__)
+log_formatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s'
+)
+logger.setLevel(logging.DEBUG if ENV != 'production' else logging.INFO)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(log_formatter)
+file_handler = logging.FileHandler('log/collab_service.log')
+file_handler.setFormatter(log_formatter)
+logger.addHandler(stream_handler)
+logger.addHandler(file_handler)
+
+# Configure Supabase
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
 
+# Configure Redis
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 REDIS_STATE_KEY = 'todo:state:{list_id}'
 REDIS_EPOCH_KEY = 'todo:server_epoch'
@@ -27,7 +45,7 @@ r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 app = Flask(__name__)
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "dev-secret")
-
+CORS(app)
 JWTManager(app)
 
 # TODO: provide feasible allowed origins
@@ -73,10 +91,10 @@ def ensure_user_list(user_id: str):
         new_owner = {'list_id': list_id, 'user_id': user_id, 'role': 'owner'}
         supabase.table('todo_list_members').insert(new_owner).execute()
 
-        print(f"Created new list for user {user_id}: {list_id}")
+        logger.info('Created new list for user %s: %s', user_id, list_id)
         return list_id
     except Exception as e:
-        print(f"Error in ensure_user_list for user {user_id}: {e}")
+        logger.error('Error in ensure_user_list for user %s: %s', user_id, str(e))
         raise
 
 
@@ -221,7 +239,7 @@ def debug_state():
 def handle_connect(auth):
     token = auth.get('token') if auth else None
     if not token:
-        print('Missing token, rejecting connection')
+        logger.error('Missing token, rejecting connection')
         return False
     try:
         decoded = decode_token(token)
@@ -232,13 +250,13 @@ def handle_connect(auth):
             )
         user_id = decoded['sub']
         request.user_id = user_id
-        print(f'User {user_id} connected via WebSocket')
+        logger.info('User %s connected via WebSocket', user_id)
     except ExpiredSignatureError:
-        print('Token expired')
+        logger.exception('Token expired')
         emit('auth_error', {'message': 'Token expired'}, to=request.sid)
         return False
     except Exception as e:
-        print(f'Invalid token: {e}')
+        logger.error('Invalid token: %s', str(e))
         return False
     ACTIVE_CONN[request.sid] = user_id
 
@@ -265,7 +283,7 @@ def handle_join(user_id, data):
             ensure_list_in_state(list_id)
             join_room(list_id)
             emit('join_list', {'list_id': list_id})
-            print(f"User {user_id} joined list {list_id}")
+            logger.info('User %s join list %s', user_id, list_id)
             current_rev = STATE[list_id]['rev']
             # Simplify rev comparing. No Operational Transform or CRDT.
             # At this point, timely sequence is not necessary for rev.
@@ -284,7 +302,7 @@ def handle_join(user_id, data):
             else:
                 emit('list_synced', {'rev': current_rev})
     except Exception as e:
-        print(f"Error in handle_join: {e}")
+        logger.error('Error in handle_join: %s', str(e))
         emit("action_error", {"message": f"Failed to join: {str(e)}"}, to=request.sid)
 
 
@@ -299,36 +317,45 @@ def handle_add(user_id, data):
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
+        logger.exception(
+            'Permission denied: user %s is not authorized to edit list %s',
+            user_id,
+            list_id,
+        )
         return
 
-    name = data.get("name") or ""
-    description = data.get("description") or ""
-    due_date = data.get("due_date")
-    media_url = data.get("media_url")
-    ensure_list_in_state(list_id)
+    try:
+        name = data.get("name") or ""
+        description = data.get("description") or ""
+        due_date = data.get("due_date")
+        media_url = data.get("media_url")
+        ensure_list_in_state(list_id)
 
-    item_id = str(uuid.uuid4())
-    item = {
-        "id": item_id,
-        "list_id": list_id,
-        "name": name,
-        "description": description,
-        "due_date": due_date,
-        "status": "not_started",
-        "done": False,
-        "media_url": media_url,
-        "is_deleted": False,
-    }
+        item_id = str(uuid.uuid4())
+        item = {
+            "id": item_id,
+            "list_id": list_id,
+            "name": name,
+            "description": description,
+            "due_date": due_date,
+            "status": "not_started",
+            "done": False,
+            "media_url": media_url,
+            "is_deleted": False,
+        }
 
-    # Local cache then save to Supabase
-    STATE[list_id]["items"][item_id] = item
-    STATE[list_id]["rev"] += 1
-    res = supabase.table("todo_items").insert(item).execute()
-    item['created_at'] = res.data[0]['created_at']
-    item['updated_at'] = res.data[0]['updated_at']
+        # Local cache then save to Supabase
+        STATE[list_id]["items"][item_id] = item
+        STATE[list_id]["rev"] += 1
+        res = supabase.table("todo_items").insert(item).execute()
+        item['created_at'] = res.data[0]['created_at']
+        item['updated_at'] = res.data[0]['updated_at']
 
-    emit("item_added", {"rev": STATE[list_id]["rev"], "item": item}, to=list_id)
-    persist_state(list_id)
+        emit("item_added", {"rev": STATE[list_id]["rev"], "item": item}, to=list_id)
+        logger.info('Added new item in list %s by user %s', list_id, user_id)
+        persist_state(list_id)
+    except Exception as e:
+        logger.debug('Failed to add new item to list %s: %e', list_id, str(e))
 
 
 @socketio.on("item_update")
@@ -341,6 +368,11 @@ def handle_update(user_id, data):
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
+        logger.exception(
+            'Permission denied: user %s is not authorized to edit list %s',
+            user_id,
+            list_id,
+        )
         return
 
     item_id = data.get("item_id")
@@ -349,33 +381,42 @@ def handle_update(user_id, data):
         return
     item = STATE[list_id]["items"][item_id]
 
-    # Update field
-    for field in ["name", "description", "status", "done", "due_date", "media_url"]:
-        if field in data:
-            item[field] = data[field]
-    STATE[list_id]["rev"] += 1
+    try:
+        # Update field
+        for field in ["name", "description", "status", "done", "due_date", "media_url"]:
+            if field in data:
+                item[field] = data[field]
+        STATE[list_id]["rev"] += 1
 
-    res = supabase.table("todo_items").update(
-        {
-            "name": item["name"],
-            "description": item["description"],
-            "status": item["status"],
-            "done": item["done"],
-            "due_date": item["due_date"],
-            "media_url": item["media_url"],
-        }
-    ).eq("id", item_id).execute()
+        res = (
+            supabase.table("todo_items")
+            .update(
+                {
+                    "name": item["name"],
+                    "description": item["description"],
+                    "status": item["status"],
+                    "done": item["done"],
+                    "due_date": item["due_date"],
+                    "media_url": item["media_url"],
+                }
+            )
+            .eq("id", item_id)
+            .execute()
+        )
 
-    item['created_at'] = res.data[0]['created_at']
-    item['updated_at'] = res.data[0]['updated_at']
-    STATE[list_id][item_id] = item
+        item['created_at'] = res.data[0]['created_at']
+        item['updated_at'] = res.data[0]['updated_at']
+        STATE[list_id][item_id] = item
 
-    emit(
-        "item_updated",
-        {"rev": STATE[list_id]["rev"], "item": item, "list_id": list_id},
-        to=list_id,
-    )
-    persist_state(list_id)
+        emit(
+            "item_updated",
+            {"rev": STATE[list_id]["rev"], "item": item, "list_id": list_id},
+            to=list_id,
+        )
+        logger.info('Updated item in list %s by user %s', list_id, user_id)
+        persist_state(list_id)
+    except Exception as e:
+        logger.exception('Failed to update list %s: %s', list_id, str(e))
 
 
 @socketio.on("item_delete")
@@ -388,22 +429,32 @@ def handle_delete(user_id, data):
             {'message': 'Permission denied: user is not authorized to edit'},
             to=request.sid,
         )
+        logger.exception(
+            'Permission denied: user %s is not authorized to edit list %s',
+            user_id,
+            list_id,
+        )
         return
-    item_id = data.get("item_id")
-    ensure_list_in_state(list_id)
 
-    STATE[list_id]["items"].pop(item_id, None)
-    STATE[list_id]["rev"] += 1
+    try:
+        item_id = data.get("item_id")
+        ensure_list_in_state(list_id)
 
-    supabase.table("todo_items").update({"is_deleted": True}).eq(
-        "id", item_id
-    ).execute()
-    emit(
-        "item_deleted",
-        {"rev": STATE[list_id]["rev"], "item_id": item_id, "list_id": list_id},
-        to=list_id,
-    )
-    persist_state(list_id)
+        STATE[list_id]["items"].pop(item_id, None)
+        STATE[list_id]["rev"] += 1
+
+        supabase.table("todo_items").update({"is_deleted": True}).eq(
+            "id", item_id
+        ).execute()
+        emit(
+            "item_deleted",
+            {"rev": STATE[list_id]["rev"], "item_id": item_id, "list_id": list_id},
+            to=list_id,
+        )
+        logger.info('Deleted an item in list %s by user %s', list_id, user_id)
+        persist_state(list_id)
+    except Exception as e:
+        logger.error('Failed to delete item in list %s: %s', list_id, str(e))
 
 
 @socketio.on('list_share')
@@ -415,7 +466,16 @@ def handle_share(user_id, data):
     owner_user_id = user_id
 
     if not list_id or not shared_user_id:
-        emit("action_error", {"message": "Missing list_id or shared_user_id"}, to=request.sid)
+        emit(
+            "action_error",
+            {"message": "Missing list_id or shared_user_id"},
+            to=request.sid,
+        )
+        logger.exception(
+            'Permission denied: user %s is not authorized to share list %s',
+            user_id,
+            list_id,
+        )
         return
 
     try:
@@ -502,12 +562,16 @@ def handle_share(user_id, data):
             room=f'user_{shared_user_id}',
         )
 
-        print(
-            f"User {owner_user_id} shared list {list_id} with {shared_user_id} as {role}"
+        logger.info(
+            'List %s shared by user %s to %s as %s',
+            list_id,
+            owner_user_id,
+            shared_user_id,
+            role,
         )
 
     except Exception as e:
-        print(f"Error in handle_share: {e}")
+        logger.error('Error sharing list %s: %s', list_id, str(e))
         emit("error", {"message": f"Failed to share list: {str(e)}"}, to=request.sid)
 
 
@@ -518,6 +582,7 @@ def handle_create_list(user_id, data):
 
     if not user_id:
         emit("error", {"message": "Missing user_id"}, to=request.sid)
+        logger.error('Failed to create new list: missing user_id')
         return
 
     try:
@@ -548,11 +613,10 @@ def handle_create_list(user_id, data):
             "items": STATE[list_id]["items"],
         }
         emit("list_created", response_data, to=request.sid)
-
-        print(f"User {user_id} created new list {list_id}: {list_name}")
+        logger.info('User %s created new list %s: %s', user_id, list_name, list_id)
 
     except Exception as e:
-        print(f"Error in handle_create_list: {e}")
+        logger.error('Failed to create new list %s', str(e))
         emit("error", {"message": f"Failed to create list: {str(e)}"}, to=request.sid)
 
 
