@@ -1,7 +1,10 @@
 'use client'
 
+import 'react-datepicker/dist/react-datepicker.css'
+
 import { useEffect, useState } from 'react'
 
+import DatePicker from 'react-datepicker'
 import { TodoItem } from '@/types/todo'
 
 interface ToDoModalProps {
@@ -195,14 +198,13 @@ export default function ToDoModal({
             <label className='block text-sm font-medium text-gray-700 mb-2'>
               Due Date
             </label>
-            <input
-              type='datetime-local'
-              value={formatDateForInput(dueDate)}
-              onChange={(e) =>
-                setDueDate(
-                  e.target.value ? new Date(e.target.value).toISOString() : ''
-                )
-              }
+            <DatePicker
+              selected={dueDate ? new Date(dueDate) : null}
+              onChange={(date) => setDueDate(date ? date.toISOString() : '')}
+              showTimeSelect
+              timeFormat='HH:mm'
+              dateFormat='yyyy-MM-dd HH:mm aa'
+              placeholderText='Select due date'
               className='w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none'
             />
           </div>
