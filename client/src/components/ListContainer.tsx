@@ -2,7 +2,7 @@
 
 import { Socket, io } from 'socket.io-client'
 import { TodoItem, TodoList } from '@/types/todo'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { SOCKET_URL } from '@/utils/config'
 import ShareModal from './ShareModal'
@@ -41,8 +41,25 @@ export default function ListContainer({
   const [newListName, setNewListName] = useState('')
   const [isCreatingList, setIsCreatingList] = useState(false)
 
+  // Filter and sort states
+  const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterDueDate, setFilterDueDate] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<'name' | 'due_date' | 'status'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+
   const revStateRef = useRef<Record<string, number>>({})
   const serverEpochRef = useRef<string>('')
+
+  const activeList = activeListId ? lists[activeListId] : null
+  const activeTodos = activeList?.todos || {}
+  const activeListName = activeList?.listName || 'Select a list'
+
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  const nextWeek = new Date(today)
+  nextWeek.setDate(nextWeek.getDate() + 7)
 
   const updateLocalCache = async (
     listId: string,
@@ -435,15 +452,72 @@ export default function ListContainer({
     setIsCreatingList(false)
   }
 
-  const activeList = activeListId ? lists[activeListId] : null
-  const activeTodos = activeList?.todos || {}
-  const activeListName = activeList?.listName || 'Select a list'
+  const filteredTodos = useMemo<TodoItem[]>(() => {
+    let todos = Object.values(activeTodos)
+    // Filter by status
+    if (filterStatus !== 'all') {
+      todos = todos.filter((todo) => todo.status === filterStatus)
+    }
+    // Filter by due date
+    if (filterDueDate !== 'all') {
+      todos = todos.filter((todo) => {
+        if (!todo.due_date) return filterDueDate === 'no_date'
+        const dueDate = new Date(todo.due_date)
+        const dateOnly = new Date(
+          dueDate.getFullYear(),
+          dueDate.getMonth(),
+          dueDate.getDate()
+        )
+        switch (filterDueDate) {
+          case 'overdue':
+            return dateOnly < today
+          case 'today':
+            return dateOnly.getTime() === today.getTime()
+          case 'tomorrow':
+            return dateOnly.getTime() === tomorrow.getTime()
+          case 'this_week':
+            return dateOnly >= today && dateOnly <= nextWeek
+          case 'no_date':
+            return false
+          default:
+            return true
+        }
+      })
+    }
+    return todos
+  }, [activeTodos, filterStatus, filterDueDate])
+
+  const filteredAndSortedTodos = useMemo(() => {
+    const sorted = [...filteredTodos]
+    sorted.sort((a, b) => {
+      let comparison = 0
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name)
+          break
+        case 'due_date':
+          if (!a.due_date && !b.due_date) comparison = 0
+          else if (!a.due_date) comparison = 1
+          else if (!b.due_date) comparison = -1
+          else
+            comparison =
+              new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+          break
+        case 'status':
+          const order = { not_started: 0, in_progress: 1, completed: 2 }
+          comparison = order[a.status] - order[b.status]
+          break
+      }
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+    return sorted
+  }, [filteredTodos, sortBy, sortOrder])
 
   return (
-    <div className='flex min-h-screen bg-gray-50'>
+    <div className='flex h-full bg-gray-50'>
       {/* Sidebar - List Navigation */}
-      <div className='w-64 bg-white border-r border-gray-200 flex flex-col'>
-        <div className='p-4 border-b border-gray-200'>
+      <div className='w-64 bg-white border-r border-gray-200 flex flex-col h-full'>
+        <div className='flex-shrink-0 p-4 border-b border-gray-200'>
           <h2 className='text-lg font-semibold text-gray-900'>My Lists</h2>
           <div className='flex items-center mt-2 text-sm'>
             <span
@@ -462,7 +536,7 @@ export default function ListContainer({
         </div>
 
         {/* List Items */}
-        <div className='flex-1 overflow-y-auto'>
+        <div className='flex-1 overflow-y-auto min-h-0'>
           {Object.values(lists).map((list) => (
             <button
               key={list.listId}
@@ -482,7 +556,7 @@ export default function ListContainer({
         </div>
 
         {/* Create New List Button */}
-        <div className='p-4 border-t border-gray-200'>
+        <div className='flex-shrink-0 p-4 border-t border-gray-200'>
           {isCreatingList ? (
             <div className='space-y-2'>
               <input
@@ -541,7 +615,7 @@ export default function ListContainer({
       </div>
 
       {/* Main Content */}
-      <div className='flex-1 overflow-y-auto p-8'>
+      <div className='flex-1 flex flex-col overflow-hidden'>
         {!activeListId ? (
           <div className='flex items-center justify-center h-full'>
             <div className='text-center'>
@@ -567,7 +641,8 @@ export default function ListContainer({
             </div>
           </div>
         ) : (
-          <div className='w-full max-w-4xl mx-auto'>
+          <div className='flex-1 overflow-y-auto p-8'>
+            <div className='w-full max-w-4xl mx-auto'>
             {/* Header */}
             <div className='flex items-center justify-between mb-6'>
               <div>
@@ -623,9 +698,118 @@ export default function ListContainer({
               </div>
             </div>
 
+            {/* Filter and Sort Controls */}
+            <div className='bg-white rounded-lg shadow p-4 mb-6'>
+              <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
+                {/* Filter by Status */}
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    Filter by Status
+                  </label>
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  >
+                    <option value='all'>All Status</option>
+                    <option value='not_started'>Not Started</option>
+                    <option value='in_progress'>In Progress</option>
+                    <option value='completed'>Completed</option>
+                  </select>
+                </div>
+
+                {/* Filter by Due Date */}
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    Filter by Due Date
+                  </label>
+                  <select
+                    value={filterDueDate}
+                    onChange={(e) => setFilterDueDate(e.target.value)}
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  >
+                    <option value='all'>All Dates</option>
+                    <option value='overdue'>Overdue</option>
+                    <option value='today'>Today</option>
+                    <option value='tomorrow'>Tomorrow</option>
+                    <option value='this_week'>This Week</option>
+                    <option value='no_date'>No Due Date</option>
+                  </select>
+                </div>
+
+                {/* Sort By */}
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    Sort By
+                  </label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) =>
+                      setSortBy(
+                        e.target.value as 'name' | 'due_date' | 'status'
+                      )
+                    }
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  >
+                    <option value='name'>Name</option>
+                    <option value='due_date'>Due Date</option>
+                    <option value='status'>Status</option>
+                  </select>
+                </div>
+
+                {/* Sort Order */}
+                <div>
+                  <label className='block text-sm font-medium text-gray-700 mb-2'>
+                    Order
+                  </label>
+                  <select
+                    value={sortOrder}
+                    onChange={(e) =>
+                      setSortOrder(e.target.value as 'asc' | 'desc')
+                    }
+                    className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  >
+                    <option value='asc'>Ascending</option>
+                    <option value='desc'>Descending</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Results Info and Reset Filters */}
+              <div className='mt-4 flex items-center justify-between'>
+                <div className='text-sm text-gray-600'>
+                  Showing{' '}
+                  <span className='font-semibold'>
+                    {filteredAndSortedTodos.length}
+                  </span>{' '}
+                  of{' '}
+                  <span className='font-semibold'>
+                    {Object.values(activeTodos).length}
+                  </span>{' '}
+                  tasks
+                </div>
+                {(filterStatus !== 'all' ||
+                  filterDueDate !== 'all' ||
+                  sortBy !== 'name' ||
+                  sortOrder !== 'asc') && (
+                  <button
+                    onClick={() => {
+                      setFilterStatus('all')
+                      setFilterDueDate('all')
+                      setSortBy('name')
+                      setSortOrder('asc')
+                    }}
+                    className='text-sm text-blue-600 hover:text-blue-700 font-medium'
+                  >
+                    Reset Filters & Sorting
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Todo List */}
             <div className='space-y-3'>
-              {Object.values(activeTodos).length === 0 ? (
+              {filteredAndSortedTodos.length === 0 ? (
                 <div className='text-center py-12 bg-white rounded-lg shadow'>
                   <svg
                     className='w-16 h-16 text-gray-300 mx-auto mb-4'
@@ -641,14 +825,18 @@ export default function ListContainer({
                     />
                   </svg>
                   <h3 className='text-lg font-medium text-gray-500 mb-2'>
-                    No tasks yet
+                    {Object.values(activeTodos).length === 0
+                      ? 'No tasks yet'
+                      : 'No tasks match your filters'}
                   </h3>
                   <p className='text-gray-400'>
-                    Add your first task to get started!
+                    {Object.values(activeTodos).length === 0
+                      ? 'Add your first task to get started!'
+                      : 'Try adjusting your filters to see more tasks'}
                   </p>
                 </div>
               ) : (
-                Object.values(activeTodos).map((todo) => (
+                filteredAndSortedTodos.map((todo) => (
                   <div
                     key={todo.id}
                     className={`bg-white rounded-lg shadow p-4 border-l-4 transition-all cursor-pointer ${
@@ -730,6 +918,7 @@ export default function ListContainer({
                   </div>
                 ))
               )}
+            </div>
             </div>
           </div>
         )}

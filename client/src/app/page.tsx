@@ -33,47 +33,54 @@ export default function Home() {
   }
 
   return (
-    <div className='flex flex-col items-center min-h-screen bg-gray-50'>
-      <div className='w-full max-w-6xl p-6'>
-        <div className='text-center mb-8'>
-          <h1 className='text-5xl font-bold text-gray-900 mb-2'>
-            Collaborative Todo
-          </h1>
-          <p className='text-gray-600'>Manage your tasks efficiently</p>
-          {isLoggedIn ? (
-            <div className='mt-4 flex items-center justify-center gap-4'>
-              <p className='text-sm text-gray-500'>User ID: {userId}</p>
-              <button
-                onClick={handleLogout}
-                className='bg-red-500 text-white text-xs px-4 py-1 rounded hover:bg-red-600 transition-colors'
-              >
-                Logout
-              </button>
-            </div>
-          ) : (
-            <div className='mt-6 flex items-center justify-center gap-2'>
+    <div className='flex flex-col h-screen bg-gray-50'>
+      {/* Header Section - Fixed at top */}
+      <div className='flex-shrink-0 border-b border-gray-200 bg-white shadow-sm'>
+        <div className='max-w-7xl mx-auto p-6'>
+          <div className='flex flex-col items-center justify-between'>
+            <h1 className='text-3xl font-bold text-gray-900'>
+              Collaborative Todo
+            </h1>
+            <p className='text-sm text-gray-600 mt-1'>
+              Manage your tasks efficiently
+            </p>
+            {isLoggedIn ? (
+              <div className='flex items-center gap-4'>
+                <p className='text-sm text-gray-500'>User ID: {userId}</p>
+                <button
+                  onClick={handleLogout}
+                  className='bg-red-500 text-white text-xs px-4 py-2 m-2 rounded hover:bg-red-600 transition-colors'
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
               <button
                 onClick={openAuthModal}
-                className='bg-teal-600 text-white px-4 py-1 text-sm rounded hover:bg-teal-700 transition-colors font-medium'
+                className='bg-teal-600 text-white px-4 py-2 m-2 text-sm rounded hover:bg-teal-700 transition-colors font-medium'
               >
                 Login/Signup
               </button>
+            )}
+          </div>
+
+          {/* Messages */}
+          {message && (
+            <div className='mt-3 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg text-sm'>
+              {message}
+            </div>
+          )}
+
+          {error && (
+            <div className='mt-3 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg text-sm'>
+              {error}
             </div>
           )}
         </div>
+      </div>
 
-        {message && (
-          <div className='mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg'>
-            {message}
-          </div>
-        )}
-
-        {error && (
-          <div className='mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg'>
-            {error}
-          </div>
-        )}
-
+      {/* Main Content Area - Fills remaining space */}
+      <div className='flex-1 overflow-hidden'>
         {isLoggedIn && userId ? (
           <ListContainer
             userId={userId}
@@ -81,7 +88,7 @@ export default function Home() {
             onError={handleError}
           />
         ) : (
-          <div className='text-center py-12'>
+          <div className='flex items-center justify-center h-full'>
             <div className='max-w-md mx-auto bg-white rounded-lg shadow-lg p-8'>
               <div className='mb-6'>
                 <svg
@@ -108,12 +115,12 @@ export default function Home() {
             </div>
           </div>
         )}
-
-        <AuthModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-        />
       </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </div>
   )
 }
