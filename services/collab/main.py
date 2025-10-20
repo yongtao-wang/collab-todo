@@ -61,11 +61,6 @@ socketio = SocketIO(
 STATE = {}
 ACTIVE_CONN = {}
 
-SERVER_EPOCH = r.get(REDIS_EPOCH_KEY)
-if not SERVER_EPOCH:
-    SERVER_EPOCH = str(uuid.uuid4())[:8]
-    r.set(REDIS_EPOCH_KEY, SERVER_EPOCH)
-
 
 def ensure_user_list(user_id: str):
     """Return list_id. If user doesn't have any list, create an empty one."""
@@ -269,10 +264,8 @@ def handle_disconnect():
 @socketio.on("join")
 @require_auth
 def handle_join(user_id, data):
-    client_epoch = data.get('epoch', '')
-    client_state = data.get('revState', {})
-    if not user_id:
-        emit("action_error", {"message": "Missing user_id"}, to=request.sid)
+    if not user_id or not data or user_id != data.get('user_id'):
+        emit("action_error", {"message": "Missing user id"}, to=request.sid)
         return
 
     try:
@@ -282,34 +275,71 @@ def handle_join(user_id, data):
         for list_id in list_ids:
             ensure_list_in_state(list_id)
             join_room(list_id)
-            emit('join_list', {'list_id': list_id})
             logger.info('User %s join list %s', user_id, list_id)
             current_rev = STATE[list_id]['rev']
-            # Simplify rev comparing. No Operational Transform or CRDT.
-            # At this point, timely sequence is not necessary for rev.
-            if (
-                client_epoch != SERVER_EPOCH
-                or client_state.get(list_id, 0) != current_rev
-            ):
-                response_data = {
-                    "list_id": list_id,
-                    'list_name': STATE[list_id]['list_name'],
-                    "rev": current_rev,
-                    "items": STATE[list_id]["items"],
-                    'server_epoch': SERVER_EPOCH,
-                }
-                emit("list_snapshot", response_data, to=request.sid)
-            else:
-                emit('list_synced', {'rev': current_rev})
+
+            # Always force a snapshot when newly join a list
+            response_data = {
+                "list_id": list_id,
+                'list_name': STATE[list_id]['list_name'],
+                "rev": current_rev,
+                "items": STATE[list_id]["items"],
+            }
+            emit("list_snapshot", response_data, to=request.sid)
     except Exception as e:
         logger.error('Error in handle_join: %s', str(e))
         emit("action_error", {"message": f"Failed to join: {str(e)}"}, to=request.sid)
 
 
-@socketio.on("item_add")
+@socketio.on('join_list')
+@require_auth
+def handle_join_list(user_id, data):
+    list_id = data.get('list_id')
+
+    if not list_id or not data or user_id != data.get('user_id'):
+        emit('action_error', {'message': 'Missing list_id'}, to=request.sid)
+        return
+    accessible_lists = ensure_accessible_todo_list_ids(user_id)
+    if list_id not in accessible_lists:
+        emit(
+            'permission_error',
+            {
+                'message': 'Unauthorized user %s not allowed to join list %s: %s'.format(
+                    user_id, list_id
+                )
+            },
+        )
+        logger.warning(
+            'Unauthorized join_list attempt by user %s for %s', user_id, list_id
+        )
+        return
+    try:
+        ensure_list_in_state(list_id)
+        join_room(list_id)
+        logger.info('User %s join list %s', user_id, list_id)
+        current_rev = STATE[list_id]['rev']
+        # Always force a snapshot when newly join a list
+        response_data = {
+            "list_id": list_id,
+            'list_name': STATE[list_id]['list_name'],
+            "rev": current_rev,
+            "items": STATE[list_id]["items"],
+        }
+        emit("list_snapshot", response_data, to=request.sid)
+    except Exception as e:
+        logger.error('Error in handle_join_list: %s', str(e))
+        emit(
+            "action_error",
+            {"message": f"Failed to join list: {str(e)}"},
+            to=request.sid,
+        )
+
+
+@socketio.on("add_item")
 @require_auth
 def handle_add(user_id, data):
     list_id = data.get("list_id")
+    client_rev = data.get('rev')
 
     if not check_user_can_edit_list(list_id, user_id):
         emit(
@@ -323,6 +353,25 @@ def handle_add(user_id, data):
             list_id,
         )
         return
+
+    if not STATE[list_id]['rev'] or STATE[list_id]['rev'] < client_rev:
+        logger.exception(
+            'Client ahead of revision for list %s for user %s',
+            list_id,
+            user_id,
+        )
+        response_data = {
+            "list_id": list_id,
+            "list_name": STATE[list_id].get("list_name", ""),
+            "rev": STATE[list_id]["rev"],
+            "items": STATE[list_id]["items"],
+        }
+        emit(
+            'sync_error',
+            {'message': f'Server behind client for list {list_id}, forcing re-sync'},
+            to=request.sid,
+        )
+        emit("list_snapshot", response_data, to=request.sid)
 
     try:
         name = data.get("name") or ""
@@ -345,20 +394,27 @@ def handle_add(user_id, data):
         }
 
         # Local cache then save to Supabase
-        STATE[list_id]["items"][item_id] = item
-        STATE[list_id]["rev"] += 1
         res = supabase.table("todo_items").insert(item).execute()
         item['created_at'] = res.data[0]['created_at']
         item['updated_at'] = res.data[0]['updated_at']
-
-        emit("item_added", {"rev": STATE[list_id]["rev"], "item": item}, to=list_id)
+        STATE[list_id]["rev"] += 1
+        STATE[list_id]["items"][item_id] = item
+        emit(
+            "item_added",
+            {
+                'list_id': list_id,
+                "item": item,
+                "rev": STATE[list_id]["rev"],
+            },
+            to=list_id,
+        )
         logger.info('Added new item in list %s by user %s', list_id, user_id)
         persist_state(list_id)
     except Exception as e:
         logger.debug('Failed to add new item to list %s: %e', list_id, str(e))
 
 
-@socketio.on("item_update")
+@socketio.on("update_item")
 @require_auth
 def handle_update(user_id, data):
     list_id = data.get("list_id")
@@ -375,19 +431,18 @@ def handle_update(user_id, data):
         )
         return
 
-    item_id = data.get("item_id")
+    item_id = data.get("id") or data.get('item_id')
     ensure_list_in_state(list_id)
     if item_id not in STATE[list_id]["items"]:
         return
     item = STATE[list_id]["items"][item_id]
-
+    logger.info('update item data %s', data)
     try:
         # Update field
         for field in ["name", "description", "status", "done", "due_date", "media_url"]:
             if field in data:
                 item[field] = data[field]
-        STATE[list_id]["rev"] += 1
-
+        logger.info('update item item %s', item)
         res = (
             supabase.table("todo_items")
             .update(
@@ -403,10 +458,11 @@ def handle_update(user_id, data):
             .eq("id", item_id)
             .execute()
         )
-
+        logger.info('update item res data %s', res.data[0])
         item['created_at'] = res.data[0]['created_at']
         item['updated_at'] = res.data[0]['updated_at']
-        STATE[list_id][item_id] = item
+        STATE[list_id]["rev"] += 1
+        STATE[list_id]['items'][item_id] = item
 
         emit(
             "item_updated",
@@ -419,7 +475,7 @@ def handle_update(user_id, data):
         logger.exception('Failed to update list %s: %s', list_id, str(e))
 
 
-@socketio.on("item_delete")
+@socketio.on("delete_item")
 @require_auth
 def handle_delete(user_id, data):
     list_id = data.get("list_id")
@@ -457,7 +513,7 @@ def handle_delete(user_id, data):
         logger.error('Failed to delete item in list %s: %s', list_id, str(e))
 
 
-@socketio.on('list_share')
+@socketio.on('share_list')
 @require_auth
 def handle_share(user_id, data):
     list_id = data.get('list_id')
@@ -540,7 +596,7 @@ def handle_share(user_id, data):
 
         # Notify the owner that sharing was successful
         emit(
-            "share_success",
+            "list_share_success",
             {
                 "message": message,
                 "list_id": list_id,

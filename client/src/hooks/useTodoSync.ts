@@ -1,0 +1,295 @@
+/**
+ * Todo Sync Hook
+ *
+ * Manages real-time synchronization of todo lists via Socket.IO.
+ * Handles incoming events, emits outgoing events, and updates local cache.
+ *
+ * @param socket - Socket.IO client instance
+ * @param userId - Current user ID
+ * @param lists - Current lists state
+ * @param setLists - Function to update lists state
+ * @param activeListId - Currently active list ID
+ * @param setActiveListId - Function to set active list
+ * @param revRef - Ref to track revision numbers per list
+ *
+ * @returns Object with CRUD operations for todos and lists
+ */
+
+import { TODO_EMIT_EVENTS, TODO_EVENTS } from '@/constants/events'
+import { TodoItem, TodoList } from '@/types/todo'
+import { useCallback, useEffect } from 'react'
+
+import { Socket } from 'socket.io-client'
+import { createLogger } from '@/utils/logger'
+import localforage from 'localforage'
+import { useTodoStore } from '@/utils/todoStore'
+
+const logger = createLogger('useTodoSync')
+
+const updateLocalCache = async (
+  listId: string,
+  updateFn: (cached: TodoList) => TodoList
+) => {
+  const cached = await localforage.getItem<TodoList>(listId)
+  if (!cached) return
+  const updated = updateFn(cached)
+  await localforage.setItem(listId, updated)
+}
+
+export const useTodoSync = (
+  socket: Socket | null,
+  userId: string,
+  lists: Record<string, TodoList>,
+  setLists: React.Dispatch<React.SetStateAction<Record<string, TodoList>>>,
+  activeListId: string | null,
+  setActiveListId: React.Dispatch<React.SetStateAction<string | null>>,
+  revRef: React.RefObject<Record<string, number>>
+) => {
+  const { setMessage } = useTodoStore.getState()
+
+  const updateLists = useCallback(
+    (list_id: string, item: TodoItem) => {
+      setLists((prev) => {
+        const list = prev[list_id]
+        if (!list) return prev
+        return {
+          ...prev,
+          [list_id]: {
+            ...list,
+            todos: {
+              ...list.todos,
+              [item.id]: item,
+            },
+          },
+        }
+      })
+    },
+    [setLists]
+  )
+
+  const removeListItem = useCallback(
+    (list_id: string, item_id: string) => {
+      setLists((prev) => {
+        const list = prev[list_id]
+        if (!list) return prev
+
+        const { [item_id]: removed, ...remainingTodos } = list.todos
+
+        return {
+          ...prev,
+          [list_id]: {
+            ...list,
+            todos: remainingTodos,
+          },
+        }
+      })
+    },
+    [setLists]
+  )
+
+  useEffect(() => {
+    if (!socket || !socket.connected) return
+
+    // Handle incoming socket events
+
+    // --- List snapshot ---
+    socket.on(TODO_EVENTS.LIST_SNAPSHOT, (data) => {
+      logger.debug('Received list snapshot:', data)
+      if (!data) return
+      const { list_id, list_name, items, rev } = data
+
+      const currentList: TodoList = {
+        listId: list_id,
+        listName: list_name,
+        todos: items,
+      }
+      revRef.current[list_id] = rev
+      setLists((prev) => ({ ...prev, [list_id]: currentList }))
+      void localforage.setItem(list_id, currentList) // Overwrite local cache
+    })
+
+    // // -- List synced ---
+    // socket.on(TODO_EVENTS.LIST_SYNCED, (data) => {
+    //   logger.debug('List synced:', data.list_id)
+    // })
+
+    // --- List created ---
+    socket.on(TODO_EVENTS.LIST_CREATED, (data) => {
+      logger.debug('List created:', data)
+      if (!data) return
+      const { list_id, list_name, items = {}, rev = 1 } = data
+      const newList: TodoList = {
+        listId: list_id,
+        listName: list_name,
+        todos: items,
+      }
+      revRef.current[list_id] = rev
+      setLists((prev) => ({ ...prev, [list_id]: newList }))
+      setActiveListId(list_id)
+      void localforage.setItem(list_id, newList)
+
+      setMessage(`Created new list "${list_name}"`)
+    })
+
+    // --- Share success ---
+    socket.on(TODO_EVENTS.LIST_SHARE_SUCCESS, (data) => {
+      logger.debug('List shared successfully:', data)
+      if (!data) return
+      setMessage(data.message)
+    })
+
+    // -- Received shared list ---
+    socket.on(TODO_EVENTS.LIST_SHARED_WITH_YOU, (data) => {
+      logger.debug('List shared with you:', data)
+      if (!data) return
+      const { list_id } = data
+      socket.emit('join_list', {
+        user_id: userId,
+        list_id: list_id,
+      })
+
+      setMessage(data.message)
+    })
+
+    // --- Item added ---
+    socket.on(TODO_EVENTS.ITEM_ADDED, (data) => {
+      logger.debug('Item added:', data)
+      if (!data) return
+      const { list_id, item, rev } = data
+      updateLists(list_id, item)
+      revRef.current[list_id] = rev
+      void updateLocalCache(item.list_id, (cached) => ({
+        ...cached,
+        todos: { ...cached.todos, [item.id]: item },
+      }))
+    })
+
+    // --- Item updated ---
+    socket.on(TODO_EVENTS.ITEM_UPDATED, async (data) => {
+      logger.debug('Item updated:', data)
+      if (!data) return
+      const { list_id, item, rev } = data
+      revRef.current[list_id] = rev
+      updateLists(list_id, item)
+      void updateLocalCache(item.list_id, (cached) => ({
+        ...cached,
+        todos: { ...cached.todos, [item.id]: item },
+      }))
+    })
+
+    // --- Item deleted ---
+    socket.on(TODO_EVENTS.ITEM_DELETED, (data) => {
+      logger.debug('Item deleted:', data)
+      if (!data) return
+      const { list_id, item_id, rev } = data
+      removeListItem(list_id, item_id)
+      revRef.current[list_id] = rev
+      void updateLocalCache(list_id, (cached) => {
+        const { [item_id]: removed, ...remainingTodos } = cached.todos
+        return {
+          ...cached,
+          todos: remainingTodos,
+        }
+      })
+    })
+
+    return () => {
+      // Clean up listeners on unmount
+      socket.removeAllListeners(TODO_EVENTS.LIST_SNAPSHOT)
+      // socket.removeAllListeners(TODO_EVENTS.LIST_SYNCED)
+      socket.removeAllListeners(TODO_EVENTS.LIST_CREATED)
+      socket.removeAllListeners(TODO_EVENTS.LIST_SHARE_SUCCESS)
+      socket.removeAllListeners(TODO_EVENTS.LIST_SHARED_WITH_YOU)
+      socket.removeAllListeners(TODO_EVENTS.ITEM_ADDED)
+      socket.removeAllListeners(TODO_EVENTS.ITEM_UPDATED)
+      socket.removeAllListeners(TODO_EVENTS.ITEM_DELETED)
+    }
+  }, [socket, setLists])
+
+  // Outgoing operations
+  const handleAddTodo = useCallback(
+    (listId: string, newTodoName: string) => {
+      socket?.emit(TODO_EMIT_EVENTS.ADD_ITEM, {
+        list_id: listId,
+        user_id: userId,
+        name: newTodoName,
+        description: '',
+        rev: revRef.current[listId] || 0,
+      })
+    },
+    [socket]
+  )
+
+  const handleUpdateTodo = useCallback(
+    (listId: string, itemId: string, updatedItem: Partial<TodoItem>) => {
+      if (!updatedItem || Object.keys(updatedItem).length === 0) {
+        logger.warn('No updates provided for item:', listId, itemId)
+        return
+      }
+      logger.info('Emitting update for item:', listId, itemId, updatedItem)
+      socket?.emit(TODO_EMIT_EVENTS.UPDATE_ITEM, {
+        list_id: listId,
+        item_id: itemId,
+        ...updatedItem,
+      })
+    },
+    [socket]
+  )
+
+  const toggleDone = useCallback(
+    (item: TodoItem) => {
+      if (!activeListId) return
+      socket?.emit(TODO_EMIT_EVENTS.UPDATE_ITEM, {
+        list_id: activeListId,
+        user_id: userId,
+        item_id: item.id,
+        done: !item.done,
+      })
+    },
+    [socket, activeListId]
+  )
+
+  const handleDeleteTodo = useCallback(
+    (listId: string, itemId: string) => {
+      socket?.emit(TODO_EMIT_EVENTS.DELETE_ITEM, {
+        list_id: listId,
+        item_id: itemId,
+      })
+    },
+    [socket]
+  )
+
+  const handleShareList = useCallback(
+    async (listId: string, targetUserId: string, role: string) => {
+      socket?.emit(TODO_EMIT_EVENTS.SHARE_LIST, {
+        list_id: listId,
+        user_id: targetUserId,
+        role,
+      })
+    },
+    [socket]
+  )
+
+  const handleCreateList = useCallback(
+    (listName: string) => {
+      socket?.emit(TODO_EMIT_EVENTS.CREATE_LIST, {
+        list_name: listName,
+        user_id: userId,
+      })
+    },
+    [socket, userId]
+  )
+
+  return {
+    lists,
+    activeListId,
+    setLists,
+    setActiveListId,
+    handleAddTodo,
+    handleUpdateTodo,
+    toggleDone,
+    handleDeleteTodo,
+    handleShareList,
+    handleCreateList,
+  }
+}

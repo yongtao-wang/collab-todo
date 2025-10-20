@@ -16,5 +16,4 @@ export interface TodoList {
   listId: string
   listName: string
   todos: Record<string, TodoItem>
-  rev: number
 }

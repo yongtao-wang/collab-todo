@@ -5,22 +5,13 @@ import ListContainer from '@/components/ListContainer'
 import localforage from 'localforage'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
+import { useTodoStore } from '@/utils/todoStore'
 
 export default function Home() {
   const { userId, isLoggedIn, logout } = useAuth()
-  const [message, setMessage] = useState<string>('')
-  const [error, setError] = useState<string>('')
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false)
 
-  const handleMessage = (msg: string) => {
-    setMessage(msg)
-    setTimeout(() => setMessage(''), 5000) // Clear message after 5 seconds
-  }
-
-  const handleError = (errorMessage: string) => {
-    setError(errorMessage)
-    setTimeout(() => setError(''), 5000) // Clear error after 5 seconds
-  }
+  const { message, error, setMessage } = useTodoStore()
 
   const openAuthModal = () => {
     setShowAuthModal(true)
@@ -30,7 +21,7 @@ export default function Home() {
     logout()
     localforage.clear()
     localStorage.clear()
-    handleMessage('Successfully logged out!')
+    setMessage('Successfully logged out!')
   }
 
   return (
@@ -83,11 +74,7 @@ export default function Home() {
       {/* Main Content Area - Fills remaining space */}
       <div className='flex-1 overflow-hidden'>
         {isLoggedIn && userId ? (
-          <ListContainer
-            userId={userId}
-            onMessage={handleMessage}
-            onError={handleError}
-          />
+          <ListContainer userId={userId} />
         ) : (
           <div className='flex items-center justify-center h-full'>
             <div className='max-w-md mx-auto bg-white rounded-lg shadow-lg p-8'>

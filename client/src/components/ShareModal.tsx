@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 
+import { createLogger } from '@/utils/logger'
+
 interface ShareModalProps {
   isOpen: boolean
   onClose: () => void
@@ -9,6 +11,8 @@ interface ShareModalProps {
   listName: string
   onShare: (userId: string, role: 'viewer' | 'editor') => void
 }
+
+const logger = createLogger('ShareModal')
 
 export default function ShareModal({
   isOpen,
@@ -55,11 +59,11 @@ export default function ShareModal({
 
     setIsSubmitting(true)
     try {
-      await onShare(userId, role)
+      onShare(userId, role)
       setUserId('')
       setRole('viewer')
     } catch (error) {
-      console.error('Error sharing:', error)
+      logger.error('Error sharing:', error)
     } finally {
       setIsSubmitting(false)
     }

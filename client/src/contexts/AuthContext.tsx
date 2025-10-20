@@ -8,7 +8,8 @@ import {
   useState,
 } from 'react'
 
-import { AUTH_URL } from '@/utils/config'
+import { AUTH_URL } from '@/utils/urls'
+import { createLogger } from '@/utils/logger'
 import { getCookie } from '@/utils/cookies'
 
 interface AuthContextType {
@@ -18,6 +19,8 @@ interface AuthContextType {
   login: (userId: string, token: string) => void
   logout: () => void
 }
+
+const logger = createLogger('AuthContext')
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -42,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await response.json()
         const newAccessToken = data.access_token
         setAccessToken(newAccessToken)
+        logger.debug('Access token refreshed')
         return newAccessToken
       } else {
         setAccessToken(null)
@@ -94,7 +98,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     try {
       if (accessToken) {
-        // TODO: Call backend auth service to invalidate tokens
         await fetch(`${AUTH_URL}/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -102,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
       }
     } catch (error) {
-      console.error('Logout error:', error)
+      logger.error('Logout error:', error)
     } finally {
       // Clear access token and user info
       setAccessToken(null)

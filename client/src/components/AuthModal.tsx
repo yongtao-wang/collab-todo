@@ -1,6 +1,7 @@
 'use client'
 
-import { AUTH_URL } from '@/utils/config'
+import { AUTH_URL } from '@/utils/urls'
+import { createLogger } from '@/utils/logger'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
 
@@ -8,6 +9,8 @@ interface AuthModalProps {
   isOpen: boolean
   onClose: () => void
 }
+
+const logger = createLogger('AuthModal')
 
 export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const { login } = useAuth()
@@ -43,7 +46,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setErrorMsg(errorData.error || 'Login failed')
       }
     } catch (error) {
-      console.error('Login error:', error)
+      logger.error('Login error:', error)
       setErrorMsg('Login error:' + error)
     }
   }
@@ -66,7 +69,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setErrorMsg(errorData.error || 'Signup failed')
       }
     } catch (error) {
-      console.error('Signup error:', error)
+      logger.error('Signup error:', error)
       setErrorMsg('Signup error:' + error)
     }
   }

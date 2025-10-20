@@ -72,13 +72,6 @@ export default function ToDoModal({
     }
   }
 
-  // Format date for datetime-local input
-  const formatDateForInput = (dateString: string | null) => {
-    if (!dateString) return ''
-    const date = new Date(dateString)
-    return date.toISOString().slice(0, 16)
-  }
-
   return (
     <div
       className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4'
