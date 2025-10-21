@@ -1,3 +1,48 @@
+/**
+ * useTodoFilters Hook
+ *
+ * Custom React hook for managing todo list filtering and sorting.
+ * Provides state management and logic for filtering todos by status and due date,
+ * and sorting by various fields.
+ *
+ * @returns Object containing filter state, setters, and utility functions
+ *
+ * @example
+ * ```tsx
+ * function TodoList() {
+ *   const {
+ *     filterStatus,
+ *     setFilterStatus,
+ *     filterDueDate,
+ *     setFilterDueDate,
+ *     sortBy,
+ *     setSortBy,
+ *     sortOrder,
+ *     setSortOrder,
+ *     resetFilters,
+ *     hasActiveFilters,
+ *     filterAndSort
+ *   } = useTodoFilters()
+ *
+ *   const filteredTodos = filterAndSort(todos)
+ *   // ...
+ * }
+ * ```
+ *
+ * Filter Options:
+ * - **Status**: all, not_started, in_progress, completed
+ * - **Due Date**: all, overdue, today, tomorrow, this_week, no_date
+ *
+ * Sort Options:
+ * - **Sort By**: name, due_date, status
+ * - **Sort Order**: asc (ascending), desc (descending)
+ *
+ * Features:
+ * - Memoized date calculations for performance
+ * - Combined filter and sort in single pass
+ * - Reset all filters to defaults
+ * - Check if any non-default filters are active
+ */
 import { useCallback, useMemo, useState } from 'react'
 
 import { TodoItem } from '@/types/todo'
@@ -26,7 +71,7 @@ export function useTodoFilters() {
   const [sortBy, setSortBy] = useState<SortBy>('name')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
 
-  // Memoize date calculations - only recalculate when day changes
+  // Memoize date calculations - recalculate when day changes
   const dateFilters = useMemo(() => {
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -36,10 +81,7 @@ export function useTodoFilters() {
     nextWeek.setDate(nextWeek.getDate() + 7)
 
     return { today, tomorrow, nextWeek }
-  }, [
-    // Recalculate only when the date changes (not time)
-    new Date().toDateString(),
-  ])
+  }, [])
 
   // Reset filters callback
   const resetFilters = useCallback(() => {

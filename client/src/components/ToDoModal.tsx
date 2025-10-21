@@ -1,6 +1,40 @@
+/**
+ * TodoModal Component
+ *
+ * A modal dialog for viewing and editing todo item details.
+ * Provides a comprehensive form for managing all todo properties including
+ * name, description, status, due date, and completion state.
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <TodoModal
+ *   todo={selectedTodo}
+ *   isOpen={isModalOpen}
+ *   onClose={() => setIsModalOpen(false)}
+ *   onUpdate={(updates) => handleUpdate(todo.id, updates)}
+ *   onDelete={(id) => handleDelete(id)}
+ * />
+ * ```
+ *
+ * Features:
+ * - Edit todo name, description, status, and due date
+ * - Toggle completion status
+ * - Delete todo with confirmation
+ * - Date picker for due dates
+ * - ESC key to close
+ * - Click outside to close
+ * - Form validation
+ * - Real-time state synchronization with parent todo
+ *
+ * @param props - Component props
+ * @param props.todo - The todo item to display/edit
+ * @param props.isOpen - Controls modal visibility
+ * @param props.onClose - Callback when modal should close
+ * @param props.onUpdate - Callback to update the todo
+ * @param props.onDelete - Callback to delete the todo
+ */
 'use client'
-
-import 'react-datepicker/dist/react-datepicker.css'
 
 import { useEffect, useState } from 'react'
 
@@ -8,10 +42,15 @@ import DatePicker from 'react-datepicker'
 import { TodoItem } from '@/types/todo'
 
 interface ToDoModalProps {
+  /** The todo item to display and edit */
   todo: TodoItem
+  /** Controls whether the modal is visible */
   isOpen: boolean
+  /** Callback function to close the modal */
   onClose: () => void
+  /** Callback function to update the todo with partial changes */
   onUpdate: (updates: Partial<TodoItem>) => void
+  /** Callback function to delete the todo by ID */
   onDelete: (id: string) => void
 }
 

@@ -1,3 +1,33 @@
+/**
+ * ListContainer Component
+ *
+ * Main container component that orchestrates the collaborative todo list application.
+ * Manages state for todo lists, handles real-time synchronization via WebSocket,
+ * and coordinates interactions between child components (Sidebar, TodoListView, modals).
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <ListContainer userId="user-123" />
+ * ```
+ *
+ * Features:
+ * - Real-time todo list synchronization via Socket.IO
+ * - Local caching with IndexedDB (via localforage)
+ * - Todo filtering and sorting
+ * - List sharing and collaboration
+ * - Modal management for todo editing and list sharing
+ *
+ * State Management:
+ * - Lists and active list state
+ * - Modal visibility (TodoModal, ShareModal)
+ * - Connection status
+ * - Filter and sort preferences
+ *
+ * @see {@link Sidebar} - List navigation component
+ * @see {@link TodoListView} - Main todo list display and management
+ * @see {@link useTodoSync} - Real-time synchronization hook
+ */
 'use client'
 
 import { TodoItem, TodoList } from '@/types/todo'
@@ -21,6 +51,7 @@ localforage.config({
 })
 
 interface ListContainerProps {
+  /** The ID of the current user */
   userId: string
 }
 
@@ -41,7 +72,7 @@ export default function ListContainer({ userId }: ListContainerProps) {
     if (!activeListId) return null
     return lists[activeListId] || null
   }, [lists, activeListId])
-  const activeTodos = activeList?.todos || {}
+  const activeTodos = useMemo(() => activeList?.todos || {}, [activeList])
   const activeListName = activeList?.listName || 'Select a list'
   const [newTodo, setNewTodo] = useState('')
 

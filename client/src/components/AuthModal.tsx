@@ -1,3 +1,30 @@
+/**
+ * AuthModal Component
+ *
+ * A modal component for user authentication, supporting both login and registration.
+ * Handles form validation, API requests, and authentication state management.
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <AuthModal
+ *   isOpen={isModalOpen}
+ *   onClose={() => setIsModalOpen(false)}
+ * />
+ * ```
+ *
+ * Features:
+ * - Toggle between login and registration modes
+ * - Form validation and error handling
+ * - Password visibility toggle
+ * - ESC key to close
+ * - Click outside to close
+ * - Accessible form controls with labels
+ *
+ * @param props - Component props
+ * @param props.isOpen - Controls modal visibility
+ * @param props.onClose - Callback when modal should close
+ */
 'use client'
 
 import { AUTH_URL } from '@/utils/urls'
@@ -6,7 +33,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
 
 interface AuthModalProps {
+  /** Controls whether the modal is visible */
   isOpen: boolean
+  /** Callback function to close the modal */
   onClose: () => void
 }
 

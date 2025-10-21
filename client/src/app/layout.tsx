@@ -1,4 +1,5 @@
 import './globals.css'
+import 'react-datepicker/dist/react-datepicker.css'
 
 import { Geist, Geist_Mono } from 'next/font/google'
 

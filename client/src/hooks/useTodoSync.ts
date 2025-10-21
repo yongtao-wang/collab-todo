@@ -1,18 +1,72 @@
 /**
- * Todo Sync Hook
+ * useTodoSync Hook
  *
- * Manages real-time synchronization of todo lists via Socket.IO.
- * Handles incoming events, emits outgoing events, and updates local cache.
+ * Custom React hook for managing real-time synchronization of todo lists via Socket.IO.
+ * Handles bidirectional communication between client and server, including:
+ * - Receiving snapshots and deltas from server
+ * - Emitting CRUD operations to server
+ * - Managing local state updates
+ * - Caching to IndexedDB via localforage
+ * - Conflict resolution via revision tracking
  *
- * @param socket - Socket.IO client instance
- * @param userId - Current user ID
- * @param lists - Current lists state
- * @param setLists - Function to update lists state
- * @param activeListId - Currently active list ID
- * @param setActiveListId - Function to set active list
- * @param revRef - Ref to track revision numbers per list
+ * @param socket - Socket.IO client instance (or null if not connected)
+ * @param accessToken - JWT access token for authenticated operations
+ * @param lists - Current lists state object keyed by list ID
+ * @param setLists - React state setter for updating lists
+ * @param activeListId - ID of currently active list (or null)
+ * @param setActiveListId - React state setter for active list ID
+ * @param revRef - React ref object tracking revision numbers per list
  *
- * @returns Object with CRUD operations for todos and lists
+ * @returns Object containing:
+ * - lists: Current lists state (passed through)
+ * - activeListId: Current active list ID (passed through)
+ * - setLists: Lists state setter (passed through)
+ * - setActiveListId: Active list setter (passed through)
+ * - handleAddTodo: Function to add a new todo
+ * - handleUpdateTodo: Function to update an existing todo
+ * - toggleDone: Function to toggle todo completion status
+ * - handleDeleteTodo: Function to delete a todo
+ * - handleShareList: Function to share a list with another user
+ * - handleCreateList: Function to create a new list
+ *
+ * @example
+ * ```tsx
+ * function MyComponent() {
+ *   const [lists, setLists] = useState({})
+ *   const [activeListId, setActiveListId] = useState(null)
+ *   const revRef = useRef({})
+ *   const socket = useSocket(userId, accessToken)
+ *
+ *   const {
+ *     handleAddTodo,
+ *     handleUpdateTodo,
+ *     handleDeleteTodo,
+ *     toggleDone,
+ *     handleShareList,
+ *     handleCreateList
+ *   } = useTodoSync(
+ *     socket,
+ *     accessToken,
+ *     lists,
+ *     setLists,
+ *     activeListId,
+ *     setActiveListId,
+ *     revRef
+ *   )
+ *
+ *   // Use the handlers...
+ * }
+ * ```
+ *
+ * Socket Events:
+ * - **Incoming**: snapshot, delta, error, success
+ * - **Outgoing**: create_list, add_todo, update_todo, delete_todo, share_list
+ *
+ * Features:
+ * - Optimistic UI updates
+ * - Automatic local cache synchronization
+ * - Revision-based conflict resolution
+ * - Error handling and user feedback
  */
 
 import { TODO_EMIT_EVENTS, TODO_EVENTS } from '@/constants/events'
@@ -74,6 +128,7 @@ export const useTodoSync = (
         if (!list) return prev
 
         const { [item_id]: removed, ...remainingTodos } = list.todos
+        logger.debug('Deleting item:', removed)
 
         return {
           ...prev,
@@ -186,6 +241,7 @@ export const useTodoSync = (
       revRef.current[list_id] = rev
       void updateLocalCache(list_id, (cached) => {
         const { [item_id]: removed, ...remainingTodos } = cached.todos
+        logger.debug('Deleting item:', removed)
         return {
           ...cached,
           todos: remainingTodos,
@@ -204,6 +260,7 @@ export const useTodoSync = (
       socket.removeAllListeners(TODO_EVENTS.ITEM_UPDATED)
       socket.removeAllListeners(TODO_EVENTS.ITEM_DELETED)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, setLists])
 
   // Outgoing operations
@@ -217,7 +274,7 @@ export const useTodoSync = (
         rev: revRef.current[listId] || 0,
       })
     },
-    [socket]
+    [socket, userId, revRef]
   )
 
   const handleUpdateTodo = useCallback(
@@ -246,7 +303,7 @@ export const useTodoSync = (
         done: !item.done,
       })
     },
-    [socket, activeListId]
+    [socket, userId, activeListId]
   )
 
   const handleDeleteTodo = useCallback(

@@ -1,33 +1,108 @@
+/**
+ * TodoListView Component
+ *
+ * Main view component for displaying and managing todos within a selected list.
+ * Provides comprehensive todo management including filtering, sorting, adding,
+ * editing, deleting, and marking todos as complete.
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <TodoListView
+ *   activeList={currentList}
+ *   activeTodos={todosObject}
+ *   filteredAndSortedTodos={filteredTodos}
+ *   newTodo={newTodoText}
+ *   setNewTodo={setNewTodoText}
+ *   isConnected={socketConnected}
+ *   filterStatus={filterStatus}
+ *   setFilterStatus={setFilterStatus}
+ *   filterDueDate={filterDueDate}
+ *   setFilterDueDate={setFilterDueDate}
+ *   sortBy={sortBy}
+ *   setSortBy={setSortBy}
+ *   sortOrder={sortOrder}
+ *   setSortOrder={setSortOrder}
+ *   hasActiveFilters={hasFilters}
+ *   resetFilters={resetFilters}
+ *   handleAddTodo={addTodo}
+ *   handleUpdateTodo={updateTodo}
+ *   handleDeleteTodo={deleteTodo}
+ *   toggleDone={toggleDone}
+ *   onShareClick={() => setShareModalOpen(true)}
+ *   onTodoClick={(todo) => openTodoModal(todo)}
+ *   onKeyPress={handleKeyPress}
+ * />
+ * ```
+ *
+ * Features:
+ * - Display todos with status, name, and due date
+ * - Filter by status (all, in progress, not started, done)
+ * - Filter by due date (all, overdue, today, this week, this month)
+ * - Sort by name, due date, or status (ascending/descending)
+ * - Add new todos via input field
+ * - Toggle todo completion with checkboxes
+ * - Click todos to open detail modal
+ * - Share list button
+ * - Empty state when no list selected or no todos
+ * - Active filter indicators with reset option
+ * - Todo count display
+ *
+ * @param props - Component props
+ */
 import { FilterDueDate, FilterStatus } from '@/hooks/useTodoFilters'
 import { TodoItem, TodoList } from '@/types/todo'
 
 interface TodoListViewProps {
+  /** The currently active todo list */
   activeList: TodoList | null
+  /** Object containing all todos in the active list keyed by todo ID */
   activeTodos: Record<string, TodoItem>
+  /** Array of todos after filtering and sorting */
   filteredAndSortedTodos: TodoItem[]
+  /** Current value of the new todo input field */
   newTodo: string
+  /** Callback to update new todo input value */
   setNewTodo: (value: string) => void
+  /** Whether the WebSocket connection is active */
   isConnected: boolean
+  /** Current filter for todo status */
   filterStatus: FilterStatus
+  /** Callback to set status filter */
   setFilterStatus: (value: FilterStatus) => void
+  /** Current filter for due date */
   filterDueDate: FilterDueDate
+  /** Callback to set due date filter */
   setFilterDueDate: (value: FilterDueDate) => void
+  /** Current sort field (name, due_date, or status) */
   sortBy: 'name' | 'due_date' | 'status'
+  /** Callback to set sort field */
   setSortBy: (value: 'name' | 'due_date' | 'status') => void
+  /** Current sort order (ascending or descending) */
   sortOrder: 'asc' | 'desc'
+  /** Callback to set sort order */
   setSortOrder: (value: 'asc' | 'desc') => void
+  /** Whether any filters are currently active */
   hasActiveFilters: boolean
+  /** Callback to reset all filters to default */
   resetFilters: () => void
+  /** Callback to add a new todo to a list */
   handleAddTodo: (listId: string, name: string) => void
+  /** Callback to update a todo with partial changes */
   handleUpdateTodo: (
     listId: string,
     itemId: string,
     updates: Partial<TodoItem>
   ) => void
+  /** Callback to delete a todo from a list */
   handleDeleteTodo: (listId: string, itemId: string) => void
+  /** Callback to toggle a todo's completion status */
   toggleDone: (todo: TodoItem) => void
+  /** Callback when the share button is clicked */
   onShareClick: () => void
+  /** Callback when a todo is clicked to open details */
   onTodoClick: (todo: TodoItem) => void
+  /** Callback for keyboard events (e.g., Enter to add todo) */
   onKeyPress: (e: React.KeyboardEvent) => void
 }
 
@@ -144,10 +219,11 @@ export function TodoListView({
           <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
             {/* Filter by Status */}
             <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
+              <label htmlFor='filter-status' className='block text-sm font-medium text-gray-700 mb-2'>
                 Filter by Status
               </label>
               <select
+                id='filter-status'
                 value={filterStatus}
                 onChange={(e) =>
                   setFilterStatus(e.target.value as FilterStatus)
@@ -163,10 +239,11 @@ export function TodoListView({
 
             {/* Filter by Due Date */}
             <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
+              <label htmlFor='filter-due-date' className='block text-sm font-medium text-gray-700 mb-2'>
                 Filter by Due Date
               </label>
               <select
+                id='filter-due-date'
                 value={filterDueDate}
                 onChange={(e) =>
                   setFilterDueDate(e.target.value as FilterDueDate)
@@ -184,10 +261,11 @@ export function TodoListView({
 
             {/* Sort By */}
             <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
+              <label htmlFor='sort-by' className='block text-sm font-medium text-gray-700 mb-2'>
                 Sort By
               </label>
               <select
+                id='sort-by'
                 value={sortBy}
                 onChange={(e) =>
                   setSortBy(e.target.value as 'name' | 'due_date' | 'status')
@@ -202,10 +280,11 @@ export function TodoListView({
 
             {/* Sort Order */}
             <div>
-              <label className='block text-sm font-medium text-gray-700 mb-2'>
+              <label htmlFor='sort-order' className='block text-sm font-medium text-gray-700 mb-2'>
                 Order
               </label>
               <select
+                id='sort-order'
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
                 className='w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500'

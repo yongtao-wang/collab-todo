@@ -1,3 +1,37 @@
+/**
+ * Sidebar Component
+ *
+ * Navigation sidebar for managing and switching between todo lists.
+ * Displays all available lists, highlights the active list, shows connection status,
+ * and provides UI for creating new lists.
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <Sidebar
+ *   lists={listsObject}
+ *   activeListId={currentListId}
+ *   isConnected={socketConnected}
+ *   setActiveListId={(id) => setActiveList(id)}
+ *   handleCreateList={(name) => createNewList(name)}
+ * />
+ * ```
+ *
+ * Features:
+ * - Display all todo lists
+ * - Highlight currently active list
+ * - Show real-time connection status indicator
+ * - Create new lists with inline form
+ * - Keyboard shortcuts (Enter to submit, Escape to cancel)
+ * - Empty state when no lists exist
+ *
+ * @param props - Component props
+ * @param props.lists - Object containing all todo lists keyed by list ID
+ * @param props.activeListId - ID of the currently active list (or null)
+ * @param props.isConnected - Whether the WebSocket connection is active
+ * @param props.setActiveListId - Callback to set the active list
+ * @param props.handleCreateList - Callback to create a new list
+ */
 import { useCallback, useMemo, useState } from 'react'
 
 import { TodoList } from '@/types/todo'
@@ -9,10 +43,15 @@ export default function Sidebar({
   setActiveListId,
   handleCreateList,
 }: {
+  /** Object containing all todo lists keyed by list ID */
   lists: Record<string, TodoList>
+  /** ID of the currently active list, or null if none selected */
   activeListId: string | null
+  /** Whether the WebSocket connection is active */
   isConnected: boolean
+  /** Callback to set the active list by ID */
   setActiveListId: (id: string) => void
+  /** Callback to create a new list with the given name */
   handleCreateList: (listName: string) => void
 }) {
   const [newListName, setNewListName] = useState('')

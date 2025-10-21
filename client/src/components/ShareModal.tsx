@@ -1,3 +1,42 @@
+/**
+ * ShareModal Component
+ *
+ * A modal dialog for sharing todo lists with other users.
+ * Allows the user to specify a target user ID and assign access roles
+ * (viewer or editor) for collaborative list management.
+ *
+ * @component
+ * @example
+ * ```tsx
+ * <ShareModal
+ *   isOpen={isShareModalOpen}
+ *   onClose={() => setIsShareModalOpen(false)}
+ *   listId="list-123"
+ *   listName="Project Tasks"
+ *   onShare={(userId, role) => handleShareList(listId, userId, role)}
+ * />
+ * ```
+ *
+ * Features:
+ * - Share lists with other users by user ID
+ * - Assign viewer or editor roles
+ * - ESC key to close
+ * - Click outside to close
+ * - Form validation
+ * - Display list name and ID for context
+ * - Auto-reset form on open
+ *
+ * Roles:
+ * - **viewer**: Can view todos but cannot modify
+ * - **editor**: Can view and modify todos
+ *
+ * @param props - Component props
+ * @param props.isOpen - Controls modal visibility
+ * @param props.onClose - Callback when modal should close
+ * @param props.listId - The ID of the list being shared
+ * @param props.listName - The name of the list being shared
+ * @param props.onShare - Callback to share the list with a user
+ */
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -5,10 +44,15 @@ import { useEffect, useState } from 'react'
 import { createLogger } from '@/utils/logger'
 
 interface ShareModalProps {
+  /** Controls whether the modal is visible */
   isOpen: boolean
+  /** Callback function to close the modal */
   onClose: () => void
+  /** The ID of the list to share */
   listId: string
+  /** The name of the list to share */
   listName: string
+  /** Callback function to share the list with a user and role */
   onShare: (userId: string, role: 'viewer' | 'editor') => void
 }
 
@@ -86,6 +130,7 @@ export default function ShareModal({
             <p className='text-xs text-gray-300 mt-1'>{listId}</p>
           </div>
           <button
+            data-testid="modal-close-button"
             onClick={onClose}
             className='text-gray-400 hover:text-gray-600 transition-colors'
           >
@@ -109,7 +154,7 @@ export default function ShareModal({
         <form onSubmit={handleSubmit} className='p-6 space-y-4'>
           {/* User ID Input */}
           <div>
-            <label className='block text-sm font-medium text-gray-700 mb-2'>
+            <label data-testid="user-id-label" className='block text-sm font-medium text-gray-700 mb-2'>
               User ID <span className='text-red-500'>*</span>
             </label>
             <input
@@ -234,7 +279,7 @@ export default function ShareModal({
                     d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                   />
                 </svg>
-                <span>Sending...</span>
+                <span data-testid="sending-indicator">Sending...</span>
               </>
             ) : (
               <span>Send Invitation</span>

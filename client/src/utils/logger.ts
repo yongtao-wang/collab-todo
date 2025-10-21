@@ -12,11 +12,9 @@ function log(module: string, level: LogLevel, ...args: unknown[]) {
   const prefix = `[${timestamp}][${level.toUpperCase()}][${module}]`
 
   if (isDev) {
-    // eslint-disable-next-line no-console
     console[level === 'debug' ? 'log' : level](prefix, ...args)
   } else {
     if (level === 'warn' || level === 'error') {
-      // eslint-disable-next-line no-console
       console[level](prefix, ...args)
     }
   }

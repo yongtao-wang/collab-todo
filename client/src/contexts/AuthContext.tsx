@@ -1,3 +1,37 @@
+/**
+ * AuthContext - Authentication Context Provider
+ *
+ * Provides authentication state and methods throughout the application.
+ * Manages user login/logout, access tokens, and automatic token refresh.
+ *
+ * @module AuthContext
+ * @example
+ * ```tsx
+ * // Wrap your app with the provider
+ * <AuthProvider>
+ *   <App />
+ * </AuthProvider>
+ *
+ * // Use the hook in components
+ * function MyComponent() {
+ *   const { userId, isLoggedIn, login, logout } = useAuth()
+ *   // ...
+ * }
+ * ```
+ *
+ * Features:
+ * - User authentication state management
+ * - JWT access token management with automatic refresh
+ * - Persistent login using HTTP-only refresh tokens
+ * - User info retrieval from server
+ * - CSRF protection
+ *
+ * Token Flow:
+ * 1. On mount, attempts to refresh access token using refresh token cookie
+ * 2. If successful, fetches user info and sets authenticated state
+ * 3. Access token stored in memory (not localStorage for security)
+ * 4. Refresh token stored as HTTP-only cookie by server
+ */
 'use client'
 
 import {
@@ -13,10 +47,15 @@ import { createLogger } from '@/utils/logger'
 import { getCookie } from '@/utils/cookies'
 
 interface AuthContextType {
+  /** The ID of the currently authenticated user, or null if not logged in */
   userId: string | null
+  /** Whether the user is currently logged in */
   isLoggedIn: boolean
+  /** The current JWT access token, or null if not logged in */
   accessToken: string | null
+  /** Function to log in a user with their ID and token */
   login: (userId: string, token: string) => void
+  /** Function to log out the current user */
   logout: () => void
 }
 
@@ -24,6 +63,14 @@ const logger = createLogger('AuthContext')
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+/**
+ * AuthProvider Component
+ *
+ * Wraps the application to provide authentication context to all child components.
+ *
+ * @param props - Component props
+ * @param props.children - Child components to wrap
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false)
@@ -51,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAccessToken(null)
         return null
       }
-    } catch (error) {
+    } catch {
       setAccessToken(null)
       return null
     }
@@ -125,6 +172,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
+/**
+ * useAuth Hook
+ *
+ * React hook to access authentication context.
+ * Must be used within an AuthProvider.
+ *
+ * @returns Authentication context with user state and methods
+ * @throws Error if used outside of AuthProvider
+ *
+ * @example
+ * ```tsx
+ * function MyComponent() {
+ *   const { userId, isLoggedIn, accessToken, login, logout } = useAuth()
+ *
+ *   if (!isLoggedIn) {
+ *     return <LoginButton onClick={() => login(id, token)} />
+ *   }
+ *
+ *   return <div>Welcome, {userId}!</div>
+ * }
+ * ```
+ */
 export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
