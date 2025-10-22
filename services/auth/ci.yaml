@@ -1,0 +1,201 @@
+# This CI/CD pipeline is for demostration purposes, will not be automatically triggered.
+# To enable automatic triggers, uncomment the 'push' and 'pull_request' sections under 'on:'.
+name: CI/CD
+
+on:
+  workflow_dispatch:  # disable automatic triggers
+  # push:
+  #   branches: [ master, develop ]
+  # pull_request:
+  #   branches: [ master, develop ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/auth-service
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: test_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --dev
+
+      - name: Lint with flake8 (non-blocking)
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run flake8 services/auth || true
+
+      - name: Run tests
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          JWT_SECRET_KEY: test_secret
+          ENV: testing
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run pytest --cov=services/auth --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop')
+    
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/auth
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://auth-staging.yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Example: Deploy to cloud provider (AWS, GCP, Azure, etc.)
+          # For AWS ECS:
+          # - Update task definition with new image
+          # - Force new deployment
+          
+          # For Kubernetes:
+          # kubectl set image deployment/auth-service auth-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop
+          
+          # For Railway/Render/Fly.io:
+          # Use their CLI or API to trigger deployment
+          
+          # Placeholder - replace with actual deployment command
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop"
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against staging..."
+          # Wait for deployment to be ready
+          sleep 30
+          # Test health endpoint
+          # curl -f https://auth-staging.yourdomain.com/health || exit 1
+
+  deploy-production:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    environment:
+      name: production
+      url: https://auth.yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production environment..."
+          # Example deployment commands
+          
+          # For AWS ECS:
+          # aws ecs update-service \
+          #   --cluster production-cluster \
+          #   --service auth-service \
+          #   --force-new-deployment
+          
+          # For Kubernetes:
+          # kubectl set image deployment/auth-service \
+          #   auth-service=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+          #   --namespace=production
+          
+          # For Google Cloud Run:
+          # gcloud run deploy auth-service \
+          #   --image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+          #   --region=us-central1
+          
+          # Placeholder - replace with actual deployment command
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against production..."
+          sleep 30
+          # Test health endpoint
+          # curl -f https://auth.yourdomain.com/health || exit 1
+
+      - name: Notify deployment
+        if: success()
+        run: |
+          echo "Production deployment successful!"
+          # Send notification (Slack, Discord, email, etc.)
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+          #   -H 'Content-Type: application/json' \
+          #   -d '{"text":"Auth service deployed to production successfully!"}'

@@ -3,6 +3,6 @@ CREATE TABLE IF NOT EXISTS users(
   name text,
   email text UNIQUE NOT NULL,
   encrypted_password text,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
 );
 

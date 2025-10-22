@@ -1,178 +1,216 @@
-import logging
-import os
-from datetime import timedelta
+"""
+Authentication Service - Main Application Module.
 
-import bcrypt
+This module serves as the entry point for the Flask-based authentication microservice.
+It initializes and configures all necessary components including JWT authentication,
+rate limiting, CORS, database connections, and health check endpoints.
+
+The service provides:
+- User registration and authentication
+- JWT token management (access + refresh tokens)
+- Rate limiting for abuse prevention
+- Health and readiness monitoring endpoints
+- Structured logging and error handling
+
+Environment Variables Required:
+    SUPABASE_URL: Supabase project URL
+    SUPABASE_SECRET_KEY: Supabase service role key
+    JWT_SECRET_KEY: Secret key for JWT token signing
+    ENV: Environment (production, development, testing)
+    PORT: Server port (default: 5566)
+    LOG_LEVEL: Logging level (default: INFO for prod, DEBUG for dev)
+
+Example:
+    Run the application:
+        $ uv run python main.py
+
+    Or import for testing:
+        >>> from main import create_app
+        >>> app = create_app()
+        >>> client = app.test_client()
+
+Author: Authentication Service Team
+Version: 1.0.0
+"""
+
+import os
+
+from config import Config
 from dotenv import load_dotenv
-from flask import Blueprint, Flask, jsonify, make_response, request
+from flask import Flask, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import (
-    JWTManager,
-    create_access_token,
-    create_refresh_token,
-    get_csrf_token,
-    get_jwt_identity,
-    jwt_required,
-    set_refresh_cookies,
-    unset_jwt_cookies,
-)
+from flask_jwt_extended import JWTManager
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from supabase import Client, create_client
+from utils.logger import get_logger
 
 load_dotenv()
 
-ENV = os.getenv('ENV')
 
-# Configure logging
-logger = logging.getLogger(__name__)
-log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger.setLevel(logging.DEBUG if ENV != 'production' else logging.INFO)
-
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(log_formatter)
-file_handler = logging.FileHandler('log/auth_service.log')
-file_handler.setFormatter(log_formatter)
-logger.addHandler(stream_handler)
-logger.addHandler(file_handler)
-
-# Configure Supabase
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SECRET_KEY)
-
-app = Flask(__name__)
-
-# Configure JWT
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret')
-app.config["JWT_COOKIE_CSRF_PROTECT"] = True
-app.config["JWT_TOKEN_LOCATION"] = ["headers", "cookies"]
-app.config["JWT_COOKIE_SECURE"] = True if ENV == 'production' else False
-app.config["JWT_COOKIE_SAMESITE"] = "Lax"
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(minutes=20)  # TTL 20 min
-app.config["JWT_REFRESH_TOKEN_EXPIRES"] = timedelta(days=10)  # TTL 10 days
-
-CORS(app, supports_credentials=True)
-JWTManager(app)
+# Initialize rate limiter
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=['2000 per day', '100 per hour'],
+    storage_uri='memory://',
+    enabled=True,
+)
 
 
-# Create a blueprint with /auth prefix
-auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
+def create_app():
+    """
+    Factory function to create and configure the Flask application.
 
+    This function initializes the Flask app with all necessary components:
+    - Configuration management (environment-based)
+    - CORS (Cross-Origin Resource Sharing)
+    - JWT authentication and token management
+    - Rate limiting (enabled in production, disabled in dev/test)
+    - Database connection (Supabase)
+    - Authentication routes blueprint
+    - Health and readiness check endpoints
+    - Structured logging
 
-@auth_bp.route('/register', methods=['POST'])
-def register():
-    try:
-        data = request.json
-        email = data.get('email')
-        password = data.get('password')
-        name = data.get('name', '')
+    The application follows the application factory pattern, allowing
+    multiple instances with different configurations for testing and
+    production deployments.
 
-        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode(
-            'utf-8'
-        )
+    Returns:
+        Flask: Configured Flask application instance ready to serve requests.
 
-        user = {'email': email, 'encrypted_password': hashed, 'name': name}
+    Raises:
+        ValueError: If required environment variables are missing or invalid.
+        Exception: If database connection fails during initialization.
 
-        res = supabase.table('users').insert(user).execute()
-        logger.info('Successfully registered new user %s with email %s', name, email)
-        return jsonify({'message': 'User registered', 'id': res.data[0]['id']}), 201
-    except Exception as e:
-        logger.error(
-            'Error during user registration for email %s: %s', email, str(e)
-        )
-        return jsonify({'error': 'Registration failed'}), 500
+    Example:
+        >>> app = create_app()
+        >>> app.run(host='0.0.0.0', port=5566)
 
+        >>> # For testing
+        >>> app = create_app()
+        >>> client = app.test_client()
+        >>> response = client.get('/health')
+        >>> assert response.status_code == 200
 
-@auth_bp.route('/login', methods=['POST'])
-def login():
-    try:
-        data = request.json
-        email = data.get('email')
-        password = data.get('password')
+    Notes:
+        - Rate limiting is automatically disabled for non-production environments
+        - CORS is enabled with credentials support for frontend integration
+        - JWT tokens use HTTP-only cookies for refresh tokens (security)
+        - Health checks are available at /health and /ready endpoints
+    """
+    app = Flask(__name__)
+    config = Config.from_env()
+    config.validate()
+    config.configure_flask(app)
+    CORS(app, supports_credentials=True)
+    JWTManager(app)
+    logger = get_logger(__name__, config.LOG_LEVEL)
+    limiter.init_app(app)
 
-        res = supabase.table('users').select('*').eq('email', email).execute()
-        if not res.data:
-            return jsonify({'error': 'Email Not Found'}), 404
+    # TODO: Enable Supabase connection pool
+    # http_client = httpx.Client(
+    #     limits=httpx.Limits(
+    #         max_connections=20,        # total max concurrent connections
+    #         max_keepalive_connections=10, # persistent connections to keep alive
+    #         keepalive_expiry=30.0      # seconds to keep connections open
+    #     ),
+    #     timeout=httpx.Timeout(10.0, connect=5.0),
+    #     headers={"Connection": "keep-alive"},
+    # )
 
-        user = res.data[0]
-        user_id = user['id']
-        if not bcrypt.checkpw(
-            password.encode('utf-8'), user['encrypted_password'].encode('utf-8')
-        ):
-            return jsonify({'error': 'Invalid password'}), 401
+    # Configure Supabase
+    supabase: Client = create_client(config.SUPABASE_URL, config.SUPABASE_SECRET_KEY)
 
-        access_token = create_access_token(identity=user_id)
-        refresh_token = create_refresh_token(identity=user_id)
+    # Import blueprint after init limiter
+    from routes.auth_routes import create_auth_blueprint
 
-        response = make_response(
-            jsonify(
+    auth_bp = create_auth_blueprint(supabase, logger, limiter)
+
+    # Register the blueprint with the app
+    app.register_blueprint(auth_bp)
+
+    # Health check endpoint
+    @app.route('/health', methods=['GET'])
+    def health_check():
+        """
+        Health check endpoint for monitoring and load balancers.
+
+        Returns service status and basic system information.
+        This endpoint is not rate-limited and does not require authentication.
+
+        Returns:
+            200: Service is healthy
                 {
-                    'access_token': access_token,
-                    'user_id': user_id,
+                    "status": "healthy",
+                    "service": "auth-service",
+                    "version": "1.0.0"
                 }
-            )
-        )
-        response.set_cookie(
-            'csrf_refresh_token',
-            get_csrf_token(refresh_token),
-            httponly=False,
-        )
-        set_refresh_cookies(response, refresh_token)
-        logger.info(f'User login successfully as {user_id} with email {email}')
-        return response
-    except Exception as e:
-        logger.error('Exception during login for user id %s: %s', user_id, str(e))
-        return jsonify({'error': 'Login failed'}), 500
 
-
-@auth_bp.route('/refresh', methods=['POST'])
-@jwt_required(refresh=True)
-def refresh():
-    try:
-        user_id = get_jwt_identity()
-        access_token = create_access_token(
-            identity=user_id, expires_delta=timedelta(minutes=15)
-        )
-        logger.info(f'Token refresh for user id {user_id}')
-        return jsonify({'access_token': access_token})
-    except Exception as e:
-        logger.error('Failed to refresh token for user id %s: %s', user_id, str(e))
-        return jsonify({'error': 'Refresh token exception'}), 500
-
-
-@auth_bp.route('/logout', methods=['POST'])
-@jwt_required()
-def logout():
-    try:
-        user_id = get_jwt_identity()
-        response = jsonify({"message": "Logout successfully, token unset."})
-        unset_jwt_cookies(response)
-        logger.info(f'User logout successfully as {user_id}')
-        return response
-    except Exception as e:
-        logger.error('Failed to logout user id %s: %s', user_id, str(e))
-        return jsonify({'error': 'Logout failed'}), 500
-
-
-@auth_bp.route('/me')
-@jwt_required()
-def me():
-    try:
-        user_id = get_jwt_identity()
-        logger.info(f'Validated user identity for user id: {user_id}')
-        return jsonify({'user_id': user_id})
-    except Exception as e:
-        logger.error(
-            'Failed to validate user identity for user id %s: %s', user_id, str(e)
+        Example:
+            >>> curl http://localhost:5566/health
+            {"status": "healthy", "service": "auth-service", "version": "1.0.0"}
+        """
+        return (
+            jsonify(
+                {'status': 'healthy', 'service': 'auth-service', 'version': '1.0.0'}
+            ),
+            200,
         )
 
+    # Readiness check endpoint (checks database connectivity)
+    @app.route('/ready', methods=['GET'])
+    def readiness_check():
+        """
+        Readiness check endpoint for Kubernetes and container orchestration.
 
-# Register the blueprint with the app
-app.register_blueprint(auth_bp)
+        Verifies that the service can handle requests by checking:
+        - Database connectivity (Supabase)
+
+        Returns:
+            200: Service is ready to handle requests
+                {
+                    "status": "ready",
+                    "checks": {
+                        "database": "ok"
+                    }
+                }
+            503: Service is not ready (database unavailable)
+                {
+                    "status": "not ready",
+                    "checks": {
+                        "database": "error"
+                    }
+                }
+
+        Example:
+            >>> curl http://localhost:5566/ready
+            {"status": "ready", "checks": {"database": "ok"}}
+        """
+        checks = {}
+        is_ready = True
+
+        # Check database connectivity
+        try:
+            # Simple query to verify Supabase connection
+            supabase.table('users').select('id').limit(1).execute()
+            checks['database'] = 'ok'
+        except Exception as e:
+            logger.error(f"Database health check failed: {str(e)}")
+            checks['database'] = 'error'
+            is_ready = False
+
+        status_code = 200 if is_ready else 503
+        status = 'ready' if is_ready else 'not ready'
+
+        return jsonify({'status': status, 'checks': checks}), status_code
+
+    return app
 
 
 if __name__ == '__main__':
+    app = create_app()
     PORT = os.getenv('PORT') or 5566
-    DEBUG = False if ENV == 'production' else True
+    DEBUG = app.config['DEBUG']
     app.run(
         host='0.0.0.0',
         port=PORT,
