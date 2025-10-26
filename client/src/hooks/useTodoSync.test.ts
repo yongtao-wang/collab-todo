@@ -1,5 +1,5 @@
+import { INCOMING_EVENTS, OUTGOING_EVENTS } from '@/constants/events'
 import type { MockSocket, TestSocket } from '@/test/test-types'
-import { TODO_EMIT_EVENTS, TODO_EVENTS } from '@/constants/events'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockLists, mockTodoItem, mockTodoList } from '@/test/mockData'
@@ -84,7 +84,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SNAPSHOT, snapshotData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SNAPSHOT, snapshotData)
         })
 
         await waitFor(() => {
@@ -110,7 +110,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SNAPSHOT, snapshotData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SNAPSHOT, snapshotData)
         })
 
         await waitFor(() => {
@@ -131,7 +131,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_CREATED, createdData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_CREATED, createdData)
         })
 
         await waitFor(() => {
@@ -159,7 +159,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_CREATED, createdData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_CREATED, createdData)
         })
 
         await waitFor(() => {
@@ -183,13 +183,13 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SHARE_SUCCESS, shareData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARE_SUCCESS, shareData)
         })
 
         // Just verify the event was handled without errors
         await waitFor(() => {
           expect(mockSocket.on).toHaveBeenCalledWith(
-            TODO_EVENTS.LIST_SHARE_SUCCESS,
+            INCOMING_EVENTS.LIST_SHARE_SUCCESS,
             expect.any(Function)
           )
         })
@@ -199,12 +199,12 @@ describe('useTodoSync', () => {
         renderUseTodoSync()
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SHARE_SUCCESS, null)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARE_SUCCESS, null)
         })
 
         // Should not crash with null data
         expect(() =>
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SHARE_SUCCESS, null)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARE_SUCCESS, null)
         ).not.toThrow()
       })
     })
@@ -219,7 +219,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SHARED_WITH_YOU, sharedData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARED_WITH_YOU, sharedData)
         })
 
         await waitFor(() => {
@@ -242,7 +242,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.ITEM_ADDED, addedData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.ITEM_ADDED, addedData)
         })
 
         await waitFor(() => {
@@ -271,7 +271,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.ITEM_UPDATED, updateData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.ITEM_UPDATED, updateData)
         })
 
         await waitFor(() => {
@@ -293,7 +293,7 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.ITEM_DELETED, deleteData)
+          mockSocket.simulateEvent(INCOMING_EVENTS.ITEM_DELETED, deleteData)
         })
 
         await waitFor(() => {
@@ -316,39 +316,13 @@ describe('useTodoSync', () => {
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.ADD_ITEM,
+          OUTGOING_EVENTS.ADD_ITEM,
           {
             list_id: mockTodoList.listId,
             user_id: mockUserId,
             name: 'New Task',
             description: '',
-            rev: expect.any(Number),
           }
-        )
-      })
-
-      it('should use current revision when adding item', () => {
-        const { result } = renderUseTodoSync()
-
-        // Simulate a snapshot to set revision
-        act(() => {
-          mockSocket.simulateEvent(TODO_EVENTS.LIST_SNAPSHOT, {
-            list_id: mockTodoList.listId,
-            list_name: mockTodoList.listName,
-            items: mockTodoList.todos,
-            rev: 15,
-          })
-        })
-
-        act(() => {
-          result.current.handleAddTodo(mockTodoList.listId, 'Another Task')
-        })
-
-        expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.ADD_ITEM,
-          expect.objectContaining({
-            rev: 15,
-          })
         )
       })
     })
@@ -366,16 +340,18 @@ describe('useTodoSync', () => {
           result.current.handleUpdateTodo(
             mockTodoList.listId,
             mockTodoItem.id,
-            updates
+            updates,
+            '10'
           )
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.UPDATE_ITEM,
+          OUTGOING_EVENTS.UPDATE_ITEM,
           {
             list_id: mockTodoList.listId,
             item_id: mockTodoItem.id,
             ...updates,
+            rev: '10',
           }
         )
       })
@@ -387,7 +363,8 @@ describe('useTodoSync', () => {
           result.current.handleUpdateTodo(
             mockTodoList.listId,
             mockTodoItem.id,
-            {}
+            {},
+            '10'
           )
         })
 
@@ -404,7 +381,7 @@ describe('useTodoSync', () => {
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.UPDATE_ITEM,
+          OUTGOING_EVENTS.UPDATE_ITEM,
           {
             list_id: mockTodoList.listId,
             user_id: mockUserId,
@@ -434,7 +411,7 @@ describe('useTodoSync', () => {
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.DELETE_ITEM,
+          OUTGOING_EVENTS.DELETE_ITEM,
           {
             list_id: mockTodoList.listId,
             item_id: mockTodoItem.id,
@@ -456,7 +433,7 @@ describe('useTodoSync', () => {
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.SHARE_LIST,
+          OUTGOING_EVENTS.SHARE_LIST,
           {
             list_id: mockTodoList.listId,
             user_id: 'user-456',
@@ -475,7 +452,7 @@ describe('useTodoSync', () => {
         })
 
         expect(mockSocket.emit).toHaveBeenCalledWith(
-          TODO_EMIT_EVENTS.CREATE_LIST,
+          OUTGOING_EVENTS.CREATE_LIST,
           {
             list_name: 'My New List',
             user_id: mockUserId,
@@ -492,25 +469,25 @@ describe('useTodoSync', () => {
       unmount()
 
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.LIST_SNAPSHOT
+        INCOMING_EVENTS.LIST_SNAPSHOT
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.LIST_CREATED
+        INCOMING_EVENTS.LIST_CREATED
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.LIST_SHARE_SUCCESS
+        INCOMING_EVENTS.LIST_SHARE_SUCCESS
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.LIST_SHARED_WITH_YOU
+        INCOMING_EVENTS.LIST_SHARED_WITH_YOU
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.ITEM_ADDED
+        INCOMING_EVENTS.ITEM_ADDED
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.ITEM_UPDATED
+        INCOMING_EVENTS.ITEM_UPDATED
       )
       expect(mockSocket.removeAllListeners).toHaveBeenCalledWith(
-        TODO_EVENTS.ITEM_DELETED
+        INCOMING_EVENTS.ITEM_DELETED
       )
     })
   })
@@ -547,7 +524,7 @@ describe('useTodoSync', () => {
       renderUseTodoSync()
 
       act(() => {
-        mockSocket.simulateEvent(TODO_EVENTS.LIST_SNAPSHOT, null)
+        mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SNAPSHOT, null)
       })
 
       await waitFor(() => {
@@ -559,7 +536,7 @@ describe('useTodoSync', () => {
       renderUseTodoSync()
 
       act(() => {
-        mockSocket.simulateEvent(TODO_EVENTS.ITEM_ADDED, null)
+        mockSocket.simulateEvent(INCOMING_EVENTS.ITEM_ADDED, null)
       })
 
       await waitFor(() => {

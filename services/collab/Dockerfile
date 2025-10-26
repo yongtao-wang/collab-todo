@@ -1,0 +1,27 @@
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+
+WORKDIR /app
+
+# Enable bytecode compilation for better startup performance
+ENV UV_COMPILE_BYTECODE=1
+
+# Copy dependency files first (for layer caching)
+COPY pyproject.toml uv.lock* ./
+
+# Install dependencies using uv
+# --frozen ensures reproducible builds
+# --no-cache reduces image size
+RUN uv sync --frozen --no-cache --no-dev
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 7788
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:5001/health')"
+
+# Run application using uv
+CMD ["uv", "run", "main.py"]

@@ -36,11 +36,9 @@
  * 3. Updates connection state in store
  * 4. Cleans up on unmount
  */
-import {
-  disconnectSocket,
-  getSocket,
-  initSocket,
-} from '@/utils/socketClient'
+
+import { disconnectSocket, getSocket, initSocket } from '@/utils/socketClient'
+import { OUTGOING_EVENTS as oe, SOCKET_EVENTS as se } from '@/constants/events'
 
 import { createLogger } from '@/utils/logger'
 import { useEffect } from 'react'
@@ -58,38 +56,35 @@ export const useSocket = (userId: string, accessToken: string) => {
     const socket = initSocket(accessToken)
 
     // Connection events
-    socket.on('connect', () => {
+    socket.on(se.CONNECT, () => {
       logger.info('Socket connected')
       setIsConnected(true)
-      socket.emit('join', {
-        user_id: userId,
-        rev: {},  // Always send empty rev to force snapshot
-      })
+      socket.emit(oe.JOIN, {})
     })
 
-    socket.on('disconnect', () => {
+    socket.on(se.DISCONNECT, () => {
       logger.info('Socket disconnected')
       setIsConnected(false)
     })
 
     // Error handling
-    socket.on('connect_error', (err) => {
+    socket.on(se.CONNECT_ERROR, (err) => {
       logger.warn('Connection error:', err.message)
       setIsConnected(false)
       setError(`Connection failed: ${err.message || 'Unable to reach server'}`)
     })
 
-    socket.on('error', (err) => {
+    socket.on(se.ERROR, (err) => {
       logger.warn('Socket error:', err)
       setError(`Connection error: ${err.message || err}`)
     })
 
-    socket.on('permission_error', (err) => {
+    socket.on(se.PERMISSION_ERROR, (err) => {
       logger.warn('Permission error:', err)
       setError(`Permission error: ${err.message || err}`)
     })
 
-    socket.on('auth_error', (err) => {
+    socket.on(se.AUTH_ERROR, (err) => {
       logger.warn('Authentication error:', err)
       setError(`Authentication error: ${err.message || err}`)
     })

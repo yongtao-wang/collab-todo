@@ -213,7 +213,12 @@ export default function ListContainer({ userId }: ListContainerProps) {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           onUpdate={(updates) =>
-            handleUpdateTodo(activeListId, selectedTodo.id, updates)
+            handleUpdateTodo(
+              activeListId,
+              selectedTodo.id,
+              updates,
+              Number(revRef.current[activeListId] || 0)
+            )
           }
           onDelete={() => handleDeleteTodo(activeListId, selectedTodo.id)}
         />

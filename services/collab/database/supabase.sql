@@ -31,9 +31,8 @@ CREATE OR REPLACE FUNCTION update_updated_at_column()
   RETURNS TRIGGER
   AS $$
 BEGIN
-  IF NEW != OLD THEN
-    -- only update if there is a change
-    NEW.updated_at = now();
+  IF NEW.updated_at = OLD.updated_at OR NEW.updated_at IS NULL THEN
+    NEW.updated_at := now();
   END IF;
   RETURN NEW;
 END;

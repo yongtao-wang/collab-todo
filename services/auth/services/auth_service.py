@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 
 import bcrypt
+from models.user import User, UserRepository
 from utils.constants import AuthErrorMessage
 from utils.logger import get_logger
 
@@ -19,7 +20,7 @@ class AuthService:
         user_repo: Repository instance for user data operations.
     """
 
-    def __init__(self, user_repository):
+    def __init__(self, user_repository: UserRepository):
         """
         Initialize the authentication service.
 
@@ -94,7 +95,7 @@ class AuthService:
             ... else:
             ...     print(f"Authenticated user: {user_id}")
         """
-        user = self.user_repo.find_by_email(email)
+        user: User = self.user_repo.find_by_email(email)
         if not user:
             return None, AuthErrorMessage.EMAIL_NOT_FOUND.value
 

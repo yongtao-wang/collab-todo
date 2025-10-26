@@ -483,9 +483,14 @@ describe('ListContainer', () => {
       // Update todo
       await user.click(screen.getByText('Update'))
 
-      expect(mockHandleUpdateTodo).toHaveBeenCalledWith('list-1', 'todo-1', {
-        name: 'Updated',
-      })
+      expect(mockHandleUpdateTodo).toHaveBeenCalledWith(
+        'list-1',
+        'todo-1',
+        {
+          name: 'Updated',
+        },
+        ''
+      )
     })
 
     it('should delete todo through TodoModal', async () => {

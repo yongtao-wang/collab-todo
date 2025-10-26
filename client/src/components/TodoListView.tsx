@@ -92,7 +92,8 @@ interface TodoListViewProps {
   handleUpdateTodo: (
     listId: string,
     itemId: string,
-    updates: Partial<TodoItem>
+    updates: Partial<TodoItem>,
+    rev: number
   ) => void
   /** Callback to delete a todo from a list */
   handleDeleteTodo: (listId: string, itemId: string) => void
@@ -130,7 +131,7 @@ export function TodoListView({
 }: TodoListViewProps) {
   if (!activeList) {
     return (
-      <div className='flex items-center justify-center h-full'>
+      <div className='flex items-center justify-center h-full w-full'>
         <div className='text-center'>
           <svg
             className='w-24 h-24 text-gray-300 mx-auto mb-4'

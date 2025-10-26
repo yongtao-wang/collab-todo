@@ -69,7 +69,7 @@
  * - Error handling and user feedback
  */
 
-import { TODO_EMIT_EVENTS, TODO_EVENTS } from '@/constants/events'
+import { INCOMING_EVENTS, OUTGOING_EVENTS } from '@/constants/events'
 import { TodoItem, TodoList } from '@/types/todo'
 import { useCallback, useEffect } from 'react'
 
@@ -148,7 +148,7 @@ export const useTodoSync = (
     // Handle incoming socket events
 
     // --- List snapshot ---
-    socket.on(TODO_EVENTS.LIST_SNAPSHOT, (data) => {
+    socket.on(INCOMING_EVENTS.LIST_SNAPSHOT, (data) => {
       logger.debug('Received list snapshot:', data)
       if (!data) return
       const { list_id, list_name, items, rev } = data
@@ -169,7 +169,7 @@ export const useTodoSync = (
     // })
 
     // --- List created ---
-    socket.on(TODO_EVENTS.LIST_CREATED, (data) => {
+    socket.on(INCOMING_EVENTS.LIST_CREATED, (data) => {
       logger.debug('List created:', data)
       if (!data) return
       const { list_id, list_name, items = {}, rev = 1 } = data
@@ -187,14 +187,14 @@ export const useTodoSync = (
     })
 
     // --- Share success ---
-    socket.on(TODO_EVENTS.LIST_SHARE_SUCCESS, (data) => {
+    socket.on(INCOMING_EVENTS.LIST_SHARE_SUCCESS, (data) => {
       logger.debug('List shared successfully:', data)
       if (!data) return
       setMessage(data.message)
     })
 
     // -- Received shared list ---
-    socket.on(TODO_EVENTS.LIST_SHARED_WITH_YOU, (data) => {
+    socket.on(INCOMING_EVENTS.LIST_SHARED_WITH_YOU, (data) => {
       logger.debug('List shared with you:', data)
       if (!data) return
       const { list_id } = data
@@ -207,7 +207,7 @@ export const useTodoSync = (
     })
 
     // --- Item added ---
-    socket.on(TODO_EVENTS.ITEM_ADDED, (data) => {
+    socket.on(INCOMING_EVENTS.ITEM_ADDED, (data) => {
       logger.debug('Item added:', data)
       if (!data) return
       const { list_id, item, rev } = data
@@ -220,7 +220,7 @@ export const useTodoSync = (
     })
 
     // --- Item updated ---
-    socket.on(TODO_EVENTS.ITEM_UPDATED, async (data) => {
+    socket.on(INCOMING_EVENTS.ITEM_UPDATED, async (data) => {
       logger.debug('Item updated:', data)
       if (!data) return
       const { list_id, item, rev } = data
@@ -233,7 +233,7 @@ export const useTodoSync = (
     })
 
     // --- Item deleted ---
-    socket.on(TODO_EVENTS.ITEM_DELETED, (data) => {
+    socket.on(INCOMING_EVENTS.ITEM_DELETED, (data) => {
       logger.debug('Item deleted:', data)
       if (!data) return
       const { list_id, item_id, rev } = data
@@ -251,14 +251,14 @@ export const useTodoSync = (
 
     return () => {
       // Clean up listeners on unmount
-      socket.removeAllListeners(TODO_EVENTS.LIST_SNAPSHOT)
+      socket.removeAllListeners(INCOMING_EVENTS.LIST_SNAPSHOT)
       // socket.removeAllListeners(TODO_EVENTS.LIST_SYNCED)
-      socket.removeAllListeners(TODO_EVENTS.LIST_CREATED)
-      socket.removeAllListeners(TODO_EVENTS.LIST_SHARE_SUCCESS)
-      socket.removeAllListeners(TODO_EVENTS.LIST_SHARED_WITH_YOU)
-      socket.removeAllListeners(TODO_EVENTS.ITEM_ADDED)
-      socket.removeAllListeners(TODO_EVENTS.ITEM_UPDATED)
-      socket.removeAllListeners(TODO_EVENTS.ITEM_DELETED)
+      socket.removeAllListeners(INCOMING_EVENTS.LIST_CREATED)
+      socket.removeAllListeners(INCOMING_EVENTS.LIST_SHARE_SUCCESS)
+      socket.removeAllListeners(INCOMING_EVENTS.LIST_SHARED_WITH_YOU)
+      socket.removeAllListeners(INCOMING_EVENTS.ITEM_ADDED)
+      socket.removeAllListeners(INCOMING_EVENTS.ITEM_UPDATED)
+      socket.removeAllListeners(INCOMING_EVENTS.ITEM_DELETED)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, setLists])
@@ -266,28 +266,33 @@ export const useTodoSync = (
   // Outgoing operations
   const handleAddTodo = useCallback(
     (listId: string, newTodoName: string) => {
-      socket?.emit(TODO_EMIT_EVENTS.ADD_ITEM, {
+      socket?.emit(OUTGOING_EVENTS.ADD_ITEM, {
         list_id: listId,
         user_id: userId,
         name: newTodoName,
         description: '',
-        rev: revRef.current[listId] || 0,
       })
     },
-    [socket, userId, revRef]
+    [socket, userId]
   )
 
   const handleUpdateTodo = useCallback(
-    (listId: string, itemId: string, updatedItem: Partial<TodoItem>) => {
+    (
+      listId: string,
+      itemId: string,
+      updatedItem: Partial<TodoItem>,
+      rev: number
+    ) => {
       if (!updatedItem || Object.keys(updatedItem).length === 0) {
         logger.warn('No updates provided for item:', listId, itemId)
         return
       }
       logger.info('Emitting update for item:', listId, itemId, updatedItem)
-      socket?.emit(TODO_EMIT_EVENTS.UPDATE_ITEM, {
+      socket?.emit(OUTGOING_EVENTS.UPDATE_ITEM, {
         list_id: listId,
         item_id: itemId,
         ...updatedItem,
+        rev,
       })
     },
     [socket]
@@ -296,7 +301,7 @@ export const useTodoSync = (
   const toggleDone = useCallback(
     (item: TodoItem) => {
       if (!activeListId) return
-      socket?.emit(TODO_EMIT_EVENTS.UPDATE_ITEM, {
+      socket?.emit(OUTGOING_EVENTS.UPDATE_ITEM, {
         list_id: activeListId,
         user_id: userId,
         item_id: item.id,
@@ -308,7 +313,7 @@ export const useTodoSync = (
 
   const handleDeleteTodo = useCallback(
     (listId: string, itemId: string) => {
-      socket?.emit(TODO_EMIT_EVENTS.DELETE_ITEM, {
+      socket?.emit(OUTGOING_EVENTS.DELETE_ITEM, {
         list_id: listId,
         item_id: itemId,
       })
@@ -318,7 +323,7 @@ export const useTodoSync = (
 
   const handleShareList = useCallback(
     async (listId: string, targetUserId: string, role: string) => {
-      socket?.emit(TODO_EMIT_EVENTS.SHARE_LIST, {
+      socket?.emit(OUTGOING_EVENTS.SHARE_LIST, {
         list_id: listId,
         user_id: targetUserId,
         role,
@@ -329,7 +334,7 @@ export const useTodoSync = (
 
   const handleCreateList = useCallback(
     (listName: string) => {
-      socket?.emit(TODO_EMIT_EVENTS.CREATE_LIST, {
+      socket?.emit(OUTGOING_EVENTS.CREATE_LIST, {
         list_name: listName,
         user_id: userId,
       })

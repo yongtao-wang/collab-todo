@@ -1,6 +1,6 @@
 /**
  * Todo Event Constants
- * 
+ *
  * Centralized definition of all Socket.IO events for the todo feature.
  * This prevents typos and makes refactoring easier.
  */
@@ -8,7 +8,7 @@
 /**
  * Events received from the server
  */
-export const TODO_EVENTS = {
+export const INCOMING_EVENTS = {
   LIST_SNAPSHOT: 'list_snapshot',
   LIST_SYNCED: 'list_synced',
   LIST_CREATED: 'list_created',
@@ -22,7 +22,7 @@ export const TODO_EVENTS = {
 /**
  * Events emitted to the server
  */
-export const TODO_EMIT_EVENTS = {
+export const OUTGOING_EVENTS = {
   JOIN: 'join',
   JOIN_LIST: 'join_list',
   CREATE_LIST: 'create_list',
@@ -40,10 +40,13 @@ export const SOCKET_EVENTS = {
   DISCONNECT: 'disconnect',
   CONNECT_ERROR: 'connect_error',
   ERROR: 'error',
+  AUTH_ERROR: 'auth_error',
   PERMISSION_ERROR: 'permission_error',
 } as const
 
 // Type exports for type safety
-export type TodoEvent = (typeof TODO_EVENTS)[keyof typeof TODO_EVENTS]
-export type TodoEmitEvent = (typeof TODO_EMIT_EVENTS)[keyof typeof TODO_EMIT_EVENTS]
+export type IncomingEvents =
+  (typeof INCOMING_EVENTS)[keyof typeof INCOMING_EVENTS]
+export type OutgoingEvents =
+  (typeof OUTGOING_EVENTS)[keyof typeof OUTGOING_EVENTS]
 export type SocketEvent = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS]
