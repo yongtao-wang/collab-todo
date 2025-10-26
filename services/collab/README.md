@@ -19,7 +19,7 @@ Other features:
 
 - Pydantic schema validation
 - JWT based verification
-- 
+- Well-documented API and events
 
 ---
 
