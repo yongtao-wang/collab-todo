@@ -551,7 +551,7 @@ tail -f logs/collab.log
 
 ### Write Worker
 
-Currently, each flask node will start its own async write worker, which is unnecessary. This service can be refactored into a standalone message queue application, e.g. Kafka producer and consumer.
+Currently, each flask node will start its own async write worker, which is unnecessary. This service can be refactored into a standalone message queue application, e.g. Kafka producer and consumer, or Redis Stream.
 
 To avoid missing writes, this message queue needs to establish a dead letter queue for retries.
 
@@ -565,13 +565,15 @@ For example, user 1 connects to server 1, user 2 connects to server 2. Updates m
 
 The better solution is to store the sid:user_id mapping in Redis, and write a Lua script to ask Redis to publish to a server-specific channel, then user 2 can be efficiently notified.
 
+We can also use consistent hashing to shard pub/sub channels.
+
 ### Multi-media Support
 
 Current Todo Item does have a column to store media link, but it has not been implemented at this point.
 
 To fully implement it, upload media file to a cloud blob storage e.g. S3, then save the media url to the field. Use CDN to further improve performance.
 
-### Simultaneous Edit Conflict Resolution
+### Concurrent Edit Conflict Resolution
 
 The logic to resolve edit conflict is very simple: last write wins. It is acceptable to some degree when concurrency load is not high, and the lagging tolerance to a todo list is comparatively higher than text collaborative editor like Google Doc. However, there are still some techniques worth trying:
 
@@ -579,3 +581,9 @@ The logic to resolve edit conflict is very simple: last write wins. It is accept
 2. OT - Operational Transformation
 
 They are highly complicated systems to provide very smooth collaborative editing experience. To further push this project to product-ready, we will eventually apply either of them.
+
+### Redis Cluster
+
+The current system uses a single node Redis instance, which will soon become the bottleneck when user scales up. For now, Redis supports up to 100k - 300k QPS.
+
+A solution is to change to a Redis cluster, and use consistent hashing. Each list_id will be sent to a dedicated Redis instance.
