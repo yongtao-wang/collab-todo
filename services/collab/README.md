@@ -47,7 +47,7 @@ Other features:
 
 ### **Multi-Tier Caching (L1 → L2 → L3)**
 
-```
+```bash
 Read Flow
 
 
@@ -549,12 +549,30 @@ tail -f logs/collab.log
 
 ## Further Improvements
 
+### Cache Granularity
+
+The current cache stores at list level with this structure
+
+```json
+state: {
+  'list_id': {
+    'list_name': '',
+    'item_id': {
+      ...item_fields
+    },
+    'rev': 12345678
+  }
+}
+```
+
+It means updating any field in the Todo item will cause a full list update, adding a lot of redundancy.
+The solution is to separate item revision from list revision, and create an item state manager. Every time an item is updated, it will not impact the entire list.
+
 ### Write Worker
 
 Currently, each flask node will start its own async write worker, which is unnecessary. This service can be refactored into a standalone message queue application, e.g. Kafka producer and consumer, or Redis Stream.
 
 To avoid missing writes, this message queue needs to establish a dead letter queue for retries.
-
 To avoid double writes, this message queue should maintain an idemptometry key.
 
 ### Connection Support for Multi-servers
@@ -571,7 +589,7 @@ We can also use consistent hashing to shard pub/sub channels.
 
 Current Todo Item does have a column to store media link, but it has not been implemented at this point.
 
-To fully implement it, upload media file to a cloud blob storage e.g. S3, then save the media url to the field. Use CDN to further improve performance.
+To fully implement it, upload media file to a cloud blob storage e.g. S3, then save the media URI to the field. Use CDN to further improve performance. For videos, there needs to be an encoding service to encode and split the video into smaller chunks.
 
 ### Concurrent Edit Conflict Resolution
 
