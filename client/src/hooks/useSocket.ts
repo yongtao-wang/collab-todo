@@ -49,6 +49,8 @@ const logger = createLogger('useSocket')
 export const useSocket = (userId: string, accessToken: string) => {
   const setIsConnected = useTodoStore((state) => state.setIsConnected)
   const setError = useTodoStore((state) => state.setError)
+  const listenersReady = useTodoStore((state) => state.listenersReady)
+  const isConnected = useTodoStore.getState().isConnected
   useEffect(() => {
     if (!userId || !accessToken) return
 
@@ -59,7 +61,6 @@ export const useSocket = (userId: string, accessToken: string) => {
     socket.on(se.CONNECT, () => {
       logger.info('Socket connected')
       setIsConnected(true)
-      socket.emit(oe.JOIN, {})
     })
 
     socket.on(se.DISCONNECT, () => {
@@ -93,6 +94,12 @@ export const useSocket = (userId: string, accessToken: string) => {
       disconnectSocket()
     }
   }, [userId, accessToken, setIsConnected, setError])
+
+  useEffect(() => {
+    const socket = getSocket()
+
+    if (socket && isConnected && listenersReady) socket.emit(oe.JOIN, {})
+  }, [listenersReady, isConnected])
 
   return getSocket()
 }

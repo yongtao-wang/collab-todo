@@ -21,7 +21,7 @@ EXPOSE 7788
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requests.get('http://localhost:5001/health')"
+  CMD python -c "import requests; requests.get('http://localhost:7788/health')"
 
 # Run application using uv
 CMD ["uv", "run", "main.py"]

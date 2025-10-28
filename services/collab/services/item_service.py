@@ -87,7 +87,12 @@ class ItemService:
         #       Last Write Win or any reasonable conflict resolution strategy.
         if client_rev < server_rev:
             # Client outdated, refuse the update, send snapshot and force client to sync
-            logger.debug('Item %s out of sync, sending a list snapshot.', item_id)
+            logger.debug(
+                'Item %s out of sync, sending a list snapshot.\nclient rev: %s, server rev: %s',
+                item_id,
+                client_rev,
+                server_rev,
+            )
             snapshot = self.coordinator.check_and_load_list_cache(list_id)
             self.socketio.emit(se.LIST_SNAPSHOT, snapshot, to=request.sid)
             self.socketio.emit(
@@ -96,6 +101,7 @@ class ItemService:
                     'message': f'Item {item_id} out of sync: client rev {client_rev}, server rev {server_rev}'
                 },
             )
+            return
 
         # Merge updates
         updated_item = {

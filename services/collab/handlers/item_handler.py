@@ -61,12 +61,15 @@ def register_item_handlers(
             item = item_service.update_item(
                 data.list_id, data.item_id, user_id, updates, data.rev
             )
-            logger.info(
-                'Updated item %s by user %s in list %s',
-                item['id'],
-                user_id,
-                data.list_id,
-            )
+            if item:
+                logger.info(
+                    'Updated item %s by user %s in list %s',
+                    item['id'],
+                    user_id,
+                    data.list_id,
+                )
+            else:
+                logger.info('Updating item interrupted')
         except PermissionError as e:
             emit(se.PERMISSION_ERROR, {'message': str(e)})
         except ValueError as e:

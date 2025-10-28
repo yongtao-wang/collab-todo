@@ -7,30 +7,25 @@ import { renderHook, waitFor } from '@/test/test-utils'
 import { createMockSocket } from '@/test/mocks/socket'
 import { useSocket } from '@/hooks/useSocket'
 
-declare global {
-  var __mockSetIsConnected: ReturnType<typeof vi.fn>
-  var __mockSetError: ReturnType<typeof vi.fn>
-}
-
-// Initialize global mocks before vi.mock hoisting
-globalThis.__mockSetIsConnected = vi.fn()
-globalThis.__mockSetError = vi.fn()
-
+const { mockSetIsConnected, mockSetError, mockSetListenersReady } = vi.hoisted(() => ({
+  mockSetIsConnected: vi.fn(),
+  mockSetError: vi.fn(),
+  mockSetListenersReady: vi.fn(),
+}))
 // Mock the store
 vi.mock('@/utils/todoStore', () => {
+  const mockState = {
+    setIsConnected: mockSetIsConnected,
+    setError: mockSetError,
+    setListenersReady: mockSetListenersReady,
+    listenersReady: true,
+    isConnected: true,
+  }
   return {
-    useTodoStore: <T>(
-      selector: (state: {
-        setIsConnected: (v: boolean) => void
-        setError: (msg: string) => void
-      }) => T
-    ): T => {
-      const mockStore = {
-        setIsConnected: globalThis.__mockSetIsConnected,
-        setError: globalThis.__mockSetError,
-      }
-      return selector(mockStore)
-    },
+    useTodoStore: Object.assign(
+      <T>(selector: (state: typeof mockState) => T): T => selector(mockState),
+      { getState: () => mockState }
+    ),
   }
 })
 
@@ -45,21 +40,19 @@ describe('useSocket', () => {
   const mockUserId = 'user-123'
   const mockAccessToken = 'token-abc'
 
-  let mockSetIsConnected: ReturnType<typeof vi.fn>
-  let mockSetError: ReturnType<typeof vi.fn>
   let mockSocket: MockSocket
 
   beforeEach(() => {
+    mockSetIsConnected.mockClear()
+    mockSetError.mockClear()
+    mockSetListenersReady.mockClear()
+
     // Create fresh mock socket for each test
     mockSocket = createMockSocket()
 
     // Update socketClient mocks to use the fresh socket
     vi.mocked(socketClient.initSocket).mockReturnValue(mockSocket as TestSocket)
     vi.mocked(socketClient.getSocket).mockReturnValue(mockSocket as TestSocket)
-
-    // Read the global store mocks
-    mockSetIsConnected = globalThis.__mockSetIsConnected
-    mockSetError = globalThis.__mockSetError
 
     vi.clearAllMocks()
   })
@@ -116,9 +109,8 @@ describe('useSocket', () => {
       await waitFor(() => {
         expect(mockSetIsConnected).toHaveBeenCalledWith(true)
       })
-      expect(mockSocket.emit).toHaveBeenCalledWith('join', {
-        user_id: mockUserId,
-        rev: {},
+      await waitFor(() => {
+        expect(mockSocket.emit).toHaveBeenCalledWith('join', {})
       })
     })
 

@@ -38,7 +38,7 @@ class ListService:
         if not all_list_ids:
             logger.info('User %s has no list, creating default', user_id)
             new_list = self.create_list(user_id, 'My TODOs')
-            all_list_ids.append(new_list.id)
+            all_list_ids.append(new_list['id'])
         return all_list_ids
 
     def create_list(self, user_id: str, list_name: str = 'Untitled List') -> dict:
@@ -144,7 +144,7 @@ class ListService:
     def join_list_room(self, user_id: str, list_id: str) -> None:
         try:
             self.coordinator.check_and_load_list_cache(list_id)
-            join_room(list_id)
+            join_room(list_id, namespace='/')
             logger.info('User %s joined list %s', user_id, list_id)
             response_data = self.get_list_snapshot(list_id)
             self.socketio.emit(se.LIST_SNAPSHOT, response_data, to=request.sid)
@@ -158,7 +158,8 @@ class ListService:
 
     def join_all_list_rooms(self, user_id: str) -> None:
         try:
-            join_room(f'user_{user_id}')
+            join_room(f'user_{user_id}', namespace='/')
+            logger.info('User %s joined his personal room', user_id)
             list_ids = self.ensure_user_list(user_id)
             for list_id in list_ids:
                 self.join_list_room(user_id, list_id)

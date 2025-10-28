@@ -19,6 +19,8 @@ interface TodoState {
   error: string | null
   setMessage: (msg: string | null) => void
   setError: (error: string | null) => void
+  listenersReady: boolean
+  setListenersReady: (ready: boolean) => void
 }
 
 // Mock all dependencies
@@ -244,6 +246,8 @@ describe('ListContainer', () => {
           setError: vi.fn(),
           message: null,
           setMessage: vi.fn(),
+          listenersReady: true,
+          setListenersReady: vi.fn(),
         }
         return selector(mockState)
       }
@@ -489,7 +493,7 @@ describe('ListContainer', () => {
         {
           name: 'Updated',
         },
-        ''
+        0,
       )
     })
 
@@ -592,6 +596,8 @@ describe('ListContainer', () => {
             setError: vi.fn(),
             message: null,
             setMessage: vi.fn(),
+            listenersReady: true,
+            setListenersReady: vi.fn(),
           }
           return selector(mockState)
         }
@@ -612,6 +618,8 @@ describe('ListContainer', () => {
             setError: vi.fn(),
             message: null,
             setMessage: vi.fn(),
+            listenersReady: true,
+            setListenersReady: vi.fn(),
           }
           return selector(mockState)
         }

@@ -125,7 +125,7 @@ class Coordinator:
         end
         
         -- Hard delete from Redis, soft delete in Supabase
-        items[item_id] = nul
+        items[item_id] = cjson.null
         
         redis.call('HMSET', list_key,
             'rev', new_rev,

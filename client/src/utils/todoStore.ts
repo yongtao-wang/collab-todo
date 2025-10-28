@@ -4,6 +4,8 @@ import { create } from 'zustand'
 interface TodoState {
   isConnected: boolean
   setIsConnected: (v: boolean) => void
+  listenersReady: boolean
+  setListenersReady: (ready: boolean) => void
   message: string | null
   error: string | null
   setMessage: (msg: string | null) => void
@@ -18,6 +20,9 @@ export const useTodoStore = create<TodoState>((set) => ({
   setIsConnected: (v) => set({ isConnected: v }),
   message: null,
   error: null,
+
+  listenersReady: false,
+  setListenersReady: (ready: boolean) => set({ listenersReady: ready }),
   
   setError: (msg: string | null, duration = UI_CONFIG.ERROR_DURATION) => {
     if (errorTimeoutId) clearTimeout(errorTimeoutId)

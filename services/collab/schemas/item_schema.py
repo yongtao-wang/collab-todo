@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from utils.constants import Regex
+from utils.constants import RegexLiteral
 
 
 class AddItemSchema(BaseModel):
@@ -10,7 +10,7 @@ class AddItemSchema(BaseModel):
     description: str | None = Field(
         None, max_length=2000, description="Item description"
     )
-    status: str = Field(default='not_started', pattern=Regex.STATUS_REGEX)
+    status: str = Field(default='not_started', pattern=RegexLiteral.STATUS_REGEX)
     done: bool = Field(default=False)
     due_date: str | None = Field(None, description="ISO date string")
     media_url: str | None = Field(None, description="URL to attached media")
@@ -45,7 +45,7 @@ class UpdateItemSchema(BaseModel):
     )
     status: str | None = Field(
         None,
-        pattern=Regex.STATUS_REGEX,
+        pattern=RegexLiteral.STATUS_REGEX,
         description='Item status',
     )
     done: bool | None = Field(None, description='Item completion flag')

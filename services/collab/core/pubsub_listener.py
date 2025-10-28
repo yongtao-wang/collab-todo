@@ -79,7 +79,7 @@ class PubSubListener:
 
         logger.debug('Received Pub/Sub event: %s for list %s', event_type, list_id)
 
-        # 1. Update L1 cache if list is loaded on this server
+        # Update L1 cache if list is loaded on this server
         state_manager = self.coordinator.state_manager
 
         if state_manager.has_list(list_id):
@@ -100,8 +100,8 @@ class PubSubListener:
             # TODO: Update list name event
             # TODO: Delete list event
 
-        # 3. Broadcast to local clients
-        self.socket.emit(event_type, data, room=list_id)
+        # Broadcast to room == list_id
+        self.socket.emit(event_type, data, to=list_id)
         logger.debug('Broadcasted %s event to room %s', event_type, list_id)
 
     def stop(self):

@@ -41,7 +41,9 @@ class StateManager:
         return list_id in self.state
 
     def get_list_state(self, list_id: str) -> dict:
-        return self.state.get(list_id, {})
+        _state = self.state.get(list_id, {})
+        _state['list_id'] = list_id
+        return _state
 
     def set_list_state(self, list_id: str, state: dict):
         self.state[list_id] = state

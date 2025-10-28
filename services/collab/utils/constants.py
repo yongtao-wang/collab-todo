@@ -67,7 +67,7 @@ class SupabaseWriterOperations:
     REMOVE_MEMBER = 'remove_member'
 
 
-class Regex:
+class RegexLiteral:
     ROLE_REGEX = r'^(owner|editor|viewer)$'
     STATUS_REGEX = r'^(not_started|in_progress|completed)$'
 

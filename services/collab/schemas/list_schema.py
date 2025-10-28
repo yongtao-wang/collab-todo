@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from utils.constants import Regex
+from utils.constants import RegexLiteral
 
 
 class JoinListSchema(BaseModel):
@@ -26,5 +26,5 @@ class ShareListSchema(BaseModel):
         ..., min_length=1, description='ID of the user to be shared to'
     )
     role: str = Field(
-        ..., pattern=Regex.ROLE_REGEX, description='The role to be shared as'
+        ..., pattern=RegexLiteral.ROLE_REGEX, description='The role to be shared as'
     )

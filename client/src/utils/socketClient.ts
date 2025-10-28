@@ -23,6 +23,11 @@ export function initSocket(accessToken: string) {
     timeout: SOCKET_CONFIG.TIMEOUT,
   })
 
+  // Expose socket to window for debugging (only in development)
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    ;(window as unknown as Record<string, unknown>)._socket = socket
+  }
+
   return socket
 }
 
@@ -34,5 +39,9 @@ export function disconnectSocket() {
   if (socket) {
     socket.disconnect()
     socket = null
+  }
+  // Clean up global reference
+  if (typeof window !== 'undefined') {
+    delete (window as unknown as Record<string, unknown>)._socket
   }
 }

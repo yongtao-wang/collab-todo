@@ -24,13 +24,32 @@ vi.mock('@/utils/logger', () => ({
 }))
 
 // Mock todoStore
-vi.mock('@/utils/todoStore', () => ({
-  useTodoStore: {
-    getState: () => ({
-      setMessage: vi.fn(),
-    }),
-  },
-}))
+vi.mock('@/utils/todoStore', () => {
+  const mockSetIsConnected = vi.fn()
+  const mockSetError = vi.fn()
+  const mockSetListenersReady = vi.fn()
+  const mockSetMessage = vi.fn()
+
+  const mockState = {
+    setIsConnected: mockSetIsConnected,
+    setError: mockSetError,
+    setListenersReady: mockSetListenersReady,
+    setMessage: mockSetMessage,
+    listenersReady: true,
+    isConnected: false,
+  }
+
+  return {
+    useTodoStore: Object.assign(
+      <T>(selector: (state: typeof mockState) => T): T => {
+        return selector(mockState)
+      },
+      {
+        getState: () => mockState,
+      }
+    ),
+  }
+})
 
 describe('useTodoSync', () => {
   let mockSocket: MockSocket
@@ -183,7 +202,10 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARE_SUCCESS, shareData)
+          mockSocket.simulateEvent(
+            INCOMING_EVENTS.LIST_SHARE_SUCCESS,
+            shareData
+          )
         })
 
         // Just verify the event was handled without errors
@@ -219,7 +241,10 @@ describe('useTodoSync', () => {
         }
 
         act(() => {
-          mockSocket.simulateEvent(INCOMING_EVENTS.LIST_SHARED_WITH_YOU, sharedData)
+          mockSocket.simulateEvent(
+            INCOMING_EVENTS.LIST_SHARED_WITH_YOU,
+            sharedData
+          )
         })
 
         await waitFor(() => {
@@ -315,15 +340,12 @@ describe('useTodoSync', () => {
           result.current.handleAddTodo(mockTodoList.listId, 'New Task')
         })
 
-        expect(mockSocket.emit).toHaveBeenCalledWith(
-          OUTGOING_EVENTS.ADD_ITEM,
-          {
-            list_id: mockTodoList.listId,
-            user_id: mockUserId,
-            name: 'New Task',
-            description: '',
-          }
-        )
+        expect(mockSocket.emit).toHaveBeenCalledWith(OUTGOING_EVENTS.ADD_ITEM, {
+          list_id: mockTodoList.listId,
+          user_id: mockUserId,
+          name: 'New Task',
+          description: '',
+        })
       })
     })
 
@@ -341,7 +363,7 @@ describe('useTodoSync', () => {
             mockTodoList.listId,
             mockTodoItem.id,
             updates,
-            '10'
+            10
           )
         })
 
@@ -351,7 +373,7 @@ describe('useTodoSync', () => {
             list_id: mockTodoList.listId,
             item_id: mockTodoItem.id,
             ...updates,
-            rev: '10',
+            rev: 10,
           }
         )
       })
@@ -364,7 +386,7 @@ describe('useTodoSync', () => {
             mockTodoList.listId,
             mockTodoItem.id,
             {},
-            '10'
+            10
           )
         })
 

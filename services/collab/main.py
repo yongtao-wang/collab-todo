@@ -5,7 +5,7 @@ from core.coordinator import Coordinator
 from core.pubsub_listener import PubSubListener
 from core.state_manager import ConnectionManager, StateManager
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_socketio import SocketIO
@@ -135,6 +135,20 @@ def create_app():
     )
 
     logger.info('WebSocket handlers registered')
+
+    @app.route('/rooms', methods=['GET'])
+    def show_rooms():
+        """Show current room memberships"""
+        namespace = '/'
+        rooms_data = socketio.server.manager.rooms.get(namespace, {})
+        room_to_sids = {}
+        for room_name, sid_bidict in rooms_data.items():
+            room_to_sids[str(room_name) if room_name else 'None'] = list(
+                sid_bidict.keys()
+            )
+
+        logger.info('Room to SID: %s', room_to_sids)
+        return jsonify(room_to_sids)
 
     # Health check endpoint
     @app.route('/health', methods=['GET'])

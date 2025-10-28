@@ -99,7 +99,7 @@ export const useTodoSync = (
   setActiveListId: React.Dispatch<React.SetStateAction<string | null>>,
   revRef: React.RefObject<Record<string, number>>
 ) => {
-  const { setMessage } = useTodoStore.getState()
+  const { setMessage, setListenersReady } = useTodoStore.getState()
 
   const updateLists = useCallback(
     (list_id: string, item: TodoItem) => {
@@ -143,7 +143,7 @@ export const useTodoSync = (
   )
 
   useEffect(() => {
-    if (!socket || !socket.connected) return
+    if (!socket) return
 
     // Handle incoming socket events
 
@@ -249,6 +249,9 @@ export const useTodoSync = (
       })
     })
 
+    setListenersReady(true)
+    logger.debug(`All listeners registered`)
+
     return () => {
       // Clean up listeners on unmount
       socket.removeAllListeners(INCOMING_EVENTS.LIST_SNAPSHOT)
@@ -259,9 +262,11 @@ export const useTodoSync = (
       socket.removeAllListeners(INCOMING_EVENTS.ITEM_ADDED)
       socket.removeAllListeners(INCOMING_EVENTS.ITEM_UPDATED)
       socket.removeAllListeners(INCOMING_EVENTS.ITEM_DELETED)
+      setListenersReady(false)
+      logger.debug('Cleaned up socket listeners')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, setLists])
+  }, [socket])
 
   // Outgoing operations
   const handleAddTodo = useCallback(
