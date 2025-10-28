@@ -34,7 +34,7 @@ def register_connection_handlers(
             logger.debug('Token expired: %s', e)
             emit(
                 se.AUTH_ERROR,
-                {'message': 'Token expired: %s'.format(e)},
+                {'message': f'Token expired: {e}'},
                 to=request.sid,
             )
             return False

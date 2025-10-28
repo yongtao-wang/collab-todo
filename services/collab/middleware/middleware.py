@@ -35,7 +35,7 @@ def require_conn(connection_manager: ConnectionManager):
 
             if not user_id:
                 logger.warning('Unauthorized request from sid=%s', sid)
-                emit(se.AUTH_ERROR, {'message': 'Unauthorized request'}, to=sid)
+                emit(se.AUTH_ERROR, {'message': 'Unauthorized request, user id is missing'}, to=sid)
                 return
 
             # Inject user_id as first argument

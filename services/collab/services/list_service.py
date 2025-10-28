@@ -114,13 +114,11 @@ class ListService:
                 role,
             )
         except ValueError as e:
-            self.socketio.emit(
-                se.ACTION_ERROR, {'message': 'Sharing list error: %s'.format(str(e))}
-            )
+            self.socketio.emit(se.ACTION_ERROR, {'message': f'Sharing list error: {e}'})
         except PermissionError as e:
             self.socketio.emit(
                 se.PERMISSION_ERROR,
-                {'message': 'Sharing list error: %s'.format(str(e))},
+                {'message': f'Permission error when sharing a list: {e}'},
             )
         finally:
             logger.debug(
@@ -152,7 +150,7 @@ class ListService:
             logger.error('Error joining list:', e)
             self.socketio.emit(
                 se.ACTION_ERROR,
-                {'message': 'Failed to join list %s: %s'.format(list_id, e)},
+                {'message': f'Failed to join list {list_id} with exception: {e}'},
                 to=request.sid,
             )
 
@@ -165,8 +163,3 @@ class ListService:
                 self.join_list_room(user_id, list_id)
         except Exception as e:
             logger.error('Error joining list:', e)
-            self.socketio.emit(
-                se.ACTION_ERROR,
-                {'message': 'Failed to join list %s: %s'.format(list_id, e)},
-                to=request.sid,
-            )
