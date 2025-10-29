@@ -38,7 +38,8 @@ class Config:
 
     # Logging
     LOG_LEVEL: str = 'INFO' if ENV == 'production' else 'DEBUG'
-    LOG_FILE: str = 'log/collab.log'
+    LOG_FOLDER: str = 'log/'
+    LOG_FILE: str = 'collab.log'
 
 
 _config: Config | None = None

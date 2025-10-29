@@ -115,19 +115,13 @@ class ListService:
             )
         except ValueError as e:
             self.socketio.emit(se.ACTION_ERROR, {'message': f'Sharing list error: {e}'})
+            logger.warning('Value error when sharing a list %s: %s', list_id, e)
         except PermissionError as e:
             self.socketio.emit(
                 se.PERMISSION_ERROR,
                 {'message': f'Permission error when sharing a list: {e}'},
             )
-        finally:
-            logger.debug(
-                'Failed to share list %s from %s to %s: %s',
-                list_id,
-                owner_user_id,
-                shared_user_id,
-                e,
-            )
+            logger.warning('Permission error when sharing a list %s: %s', list_id, e)
 
     def get_list_snapshot(self, list_id: str) -> dict:
         """Get current state snapshot for a list"""

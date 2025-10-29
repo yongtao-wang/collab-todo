@@ -16,3 +16,8 @@ wheels/
 .env
 .env.*
 !.env.example
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*

@@ -100,6 +100,7 @@ class ItemService:
                 {
                     'message': f'Item {item_id} out of sync: client rev {client_rev}, server rev {server_rev}'
                 },
+                to=request.sid,
             )
             return
 

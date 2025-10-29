@@ -328,6 +328,8 @@ WRITER_QUEUE_SIZE=1000
 
 ### **4. Setup Redis**
 
+> You need a running Redis instance to launch this service or for testing
+
 #### **Option A: Local Installation**
 
 ```bash
@@ -544,6 +546,24 @@ tail -f logs/collab.log
 2025-01-26 10:30:45,124 INFO [pubsub_listener] Received Pub/Sub: item_added for list xyz789
 2025-01-26 10:30:45,125 INFO [pubsub_listener] Broadcasting item_added to room xyz789
 ```
+
+### **Testing**
+
+The service uses `pytest` for testing, pytest-cov to analyze coverage.
+
+> You need to connect to a Redis instance to properly run the full tests, otherwise Lua script testing will be skipped.
+
+There are two notices for Lua script testing:
+
+1. The configuration uses DB 15 to run test, which is a temporary solution. Beware not to store production data in it.
+2. Pub/Sub listener will capture events from test run. If you test with real list_id, any updates will be broadcasted to the clients, so beware with test data.
+
+TODO - Improve test isolation
+
+- Isolate testing Redis
+  - Use a separate Redis instance for tests only (Docker container)
+  - fakeredis doesn't support TIME command, need to mock this function to use fakeredis
+- Pass in a testing channel to Lua script, so that Pub/Sub listener will not response to testing events.
 
 ---
 

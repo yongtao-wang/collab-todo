@@ -1,6 +1,7 @@
 # core/coordinator.py
 import json
 import time
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from core.state_manager import StateManager
@@ -35,121 +36,15 @@ class Coordinator:
 
     def _load_lua_scripts(self) -> Dict[str, str]:
         """Load and register Lua scripts with Redis"""
-        add_item_script = """
-        local list_key = KEYS[1]
-        local item_id = ARGV[1]
-        local item_data = ARGV[2]
-        
-        local time_parts = redis.call('TIME')
-        local new_rev = tonumber(time_parts[1]) + tonumber(time_parts[2]) / 1000000
-        
-        local items_json = redis.call('HGET', list_key, 'items')
-        local items = {}
-        if items_json then
-            items = cjson.decode(items_json)
-        end
-        
-        items[item_id] = cjson.decode(item_data)
-        
-        redis.call('HMSET', list_key, 
-            'rev', new_rev,
-            'items', cjson.encode(items),
-            'updated_at', time_parts[1]
-        )
-        
-        local list_id = string.match(list_key, 'todo:state:(.+)')
-        local message = cjson.encode({
-            type = 'item_added',
-            list_id = list_id,
-            item = cjson.decode(item_data),
-            rev = new_rev
-        })
-        redis.call('PUBLISH', 'todo:updates', message)
-        
-        return new_rev
-        """
+        script_dir = Path(__file__).parent / 'lua_scripts'
 
-        update_item_script = """
-        local list_key = KEYS[1]
-        local item_id = ARGV[1]
-        local item_data = ARGV[2]
-        
-        local time_parts = redis.call('TIME')
-        local new_rev = tonumber(time_parts[1]) + tonumber(time_parts[2]) / 1000000
-        
-        local items_json = redis.call('HGET', list_key, 'items')
-        if not items_json then
-            return redis.error_reply('List not found')
-        end
-        
-        local items = cjson.decode(items_json)
-        if not items[item_id] then
-            return redis.error_reply('Item not found')
-        end
-        
-        items[item_id] = cjson.decode(item_data)
-        
-        redis.call('HMSET', list_key,
-            'rev', new_rev,
-            'items', cjson.encode(items),
-            'updated_at', time_parts[1]
-        )
-        
-        local list_id = string.match(list_key, 'todo:state:(.+)')
-        local message = cjson.encode({
-            type = 'item_updated',
-            list_id = list_id,
-            item = cjson.decode(item_data),
-            rev = new_rev
-        })
-        redis.call('PUBLISH', 'todo:updates', message)
-        
-        return new_rev
-        """
+        scripts = {}
+        for script_name in ['add_item', 'update_item', 'delete_item']:
+            script_path = script_dir / f'{script_name}.lua'
+            with open(script_path, 'r') as f:
+                scripts[script_name] = self.redis.register_script(f.read())
 
-        delete_item_script = """
-        local list_key = KEYS[1]
-        local item_id = ARGV[1]
-        
-        local time_parts = redis.call('TIME')
-        local new_rev = tonumber(time_parts[1]) + tonumber(time_parts[2]) / 1000000
-        
-        local items_json = redis.call('HGET', list_key, 'items')
-        if not items_json then
-            return redis.error_reply('List not found')
-        end
-        
-        local items = cjson.decode(items_json)
-        if not items[item_id] then
-            return redis.error_reply('Item not found')
-        end
-        
-        -- Hard delete from Redis, soft delete in Supabase
-        items[item_id] = cjson.null
-        
-        redis.call('HMSET', list_key,
-            'rev', new_rev,
-            'items', cjson.encode(items),
-            'updated_at', time_parts[1]
-        )
-        
-        local list_id = string.match(list_key, 'todo:state:(.+)')
-        local message = cjson.encode({
-            type = 'item_deleted',
-            list_id = list_id,
-            item_id = item_id,
-            rev = new_rev
-        })
-        redis.call('PUBLISH', 'todo:updates', message)
-        
-        return new_rev
-        """
-
-        return {
-            'add_item': self.redis.register_script(add_item_script),
-            'update_item': self.redis.register_script(update_item_script),
-            'delete_item': self.redis.register_script(delete_item_script),
-        }
+        return scripts
 
     def check_and_load_list_cache(self, list_id: str) -> dict:
         """Check if list exists in L1, load from L2/L3 if not"""
@@ -242,9 +137,9 @@ class Coordinator:
             'created_at': ts,
         }
 
-        self.redis.hmset(
+        self.redis.hset(
             redis_key,
-            {
+            mapping={
                 'rev': initial_state['rev'],
                 'list_name': list_name,
                 'owner_id': owner_id,
@@ -303,9 +198,9 @@ class Coordinator:
         }
 
         redis_key = f'todo:state:{list_id}'
-        self.redis.hmset(
+        self.redis.hset(
             redis_key,
-            {
+            mapping={
                 'rev': state['rev'],
                 'list_name': state['list_name'],
                 'owner_id': state['owner_id'],
