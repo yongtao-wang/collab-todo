@@ -33,7 +33,7 @@ A real-time collaborative todo list application where multiple users can create,
 
    Create `.env` files for each service:
 
-   - `services/auth/.env`:
+   - `services/auth/.env`
 
      ```env
      ENV=development
@@ -42,7 +42,7 @@ A real-time collaborative todo list application where multiple users can create,
      JWT_SECRET_KEY=your_jwt_secret
      ```
 
-   - `services/collab/.env`:
+   - `services/collab/.env`
 
      ```env
      ENV=development
@@ -53,7 +53,7 @@ A real-time collaborative todo list application where multiple users can create,
      ENABLE_REDIS_LISTENER=true
      ```
 
-   - `client/.env`:
+   - `client/.env`
      ```env
      NODE_ENV=development
      NEXT_PUBLIC_AUTH_URL=http://localhost:5566/auth

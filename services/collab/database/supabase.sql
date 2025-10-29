@@ -59,8 +59,8 @@ CREATE TABLE todo_list_members(
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   list_id uuid REFERENCES todo_lists(id) ON DELETE CASCADE,
   user_id uuid NOT NULL,
-  ROLE list_role DEFAULT 'viewer',
+  'role' list_role DEFAULT 'viewer',
   created_at timestamptz DEFAULT now(),
-  UNIQUE (list_id, user_id)
+  CONSTRAINT unique_list_user UNIQUE (list_id, user_id)
 );
 
