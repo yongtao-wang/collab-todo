@@ -1,3 +1,4 @@
+# This python image included uv by default
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app

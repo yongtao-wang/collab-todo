@@ -1,0 +1,36 @@
+services:
+  auth:
+    build: ./services/auth
+    container_name: todo-auth
+    ports:
+      - '5566:5566'
+    env_file:
+      - ./services/auth/.env
+
+  collab:
+    build: ./services/collab
+    container_name: todo-collab
+    ports:
+      - '7788:7788'
+    env_file:
+      - ./services/collab/.env
+    depends_on:
+      - redis
+
+  client:
+    build: ./client
+    container_name: todo-client
+    ports:
+      - '3000:3000'
+    env_file:
+      - ./client/.env
+    depends_on:
+      - auth
+      - collab
+
+  redis:
+    image: redis:alpine
+    container_name: todo-redis
+    ports:
+      - '6379:6379'
+    restart: unless-stopped
