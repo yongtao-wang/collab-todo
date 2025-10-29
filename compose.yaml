@@ -1,6 +1,7 @@
 services:
   auth:
     build: ./services/auth
+    image: yw/collab-auth:1.0.0
     container_name: todo-auth
     ports:
       - '5566:5566'
@@ -9,6 +10,7 @@ services:
 
   collab:
     build: ./services/collab
+    image: yw/collab-svc:1.0.0
     container_name: todo-collab
     ports:
       - '7788:7788'
@@ -19,6 +21,7 @@ services:
 
   client:
     build: ./client
+    image: yw/collab-client:1.0.0
     container_name: todo-client
     ports:
       - '3000:3000'
