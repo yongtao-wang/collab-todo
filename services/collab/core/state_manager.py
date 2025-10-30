@@ -24,7 +24,10 @@ class ConnectionManager:
 
     def get_stats(self) -> dict:
         """Get connection statistics"""
-        return {'total_connections': len(self._pool)}
+        return {
+            'total_connections': len(self._pool),
+            'unique_users': len(set(self._pool.values()))
+        }
 
     def get_all_connections(self) -> dict:
         """Get all active connections"""
