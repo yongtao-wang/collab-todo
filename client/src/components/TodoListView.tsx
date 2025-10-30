@@ -207,7 +207,10 @@ export function TodoListView({
             />
             <button
               className='px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-              onClick={() => handleAddTodo(activeList.listId, newTodo)}
+              onClick={() => {
+                handleAddTodo(activeList.listId, newTodo)
+                setNewTodo('')
+              }}
               disabled={!isConnected || !newTodo.trim()}
             >
               Add Task
@@ -220,7 +223,10 @@ export function TodoListView({
           <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
             {/* Filter by Status */}
             <div>
-              <label htmlFor='filter-status' className='block text-sm font-medium text-gray-700 mb-2'>
+              <label
+                htmlFor='filter-status'
+                className='block text-sm font-medium text-gray-700 mb-2'
+              >
                 Filter by Status
               </label>
               <select
@@ -240,7 +246,10 @@ export function TodoListView({
 
             {/* Filter by Due Date */}
             <div>
-              <label htmlFor='filter-due-date' className='block text-sm font-medium text-gray-700 mb-2'>
+              <label
+                htmlFor='filter-due-date'
+                className='block text-sm font-medium text-gray-700 mb-2'
+              >
                 Filter by Due Date
               </label>
               <select
@@ -262,7 +271,10 @@ export function TodoListView({
 
             {/* Sort By */}
             <div>
-              <label htmlFor='sort-by' className='block text-sm font-medium text-gray-700 mb-2'>
+              <label
+                htmlFor='sort-by'
+                className='block text-sm font-medium text-gray-700 mb-2'
+              >
                 Sort By
               </label>
               <select
@@ -281,7 +293,10 @@ export function TodoListView({
 
             {/* Sort Order */}
             <div>
-              <label htmlFor='sort-order' className='block text-sm font-medium text-gray-700 mb-2'>
+              <label
+                htmlFor='sort-order'
+                className='block text-sm font-medium text-gray-700 mb-2'
+              >
                 Order
               </label>
               <select
