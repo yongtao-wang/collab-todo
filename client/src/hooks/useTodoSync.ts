@@ -330,7 +330,8 @@ export const useTodoSync = (
     async (listId: string, targetUserId: string, role: string) => {
       socket?.emit(OUTGOING_EVENTS.SHARE_LIST, {
         list_id: listId,
-        user_id: targetUserId,
+        owner_user_id: userId,
+        shared_user_id: targetUserId,
         role,
       })
     },

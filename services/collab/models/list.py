@@ -152,7 +152,11 @@ class ListRepository:
             'role': role,
             'created_at': now_iso(),
         }
-        response = self.supabase.table(self.members_table).upsert(data).execute()
+        response = (
+            self.supabase.table(self.members_table)
+            .upsert(data, on_conflict="list_id,user_id")
+            .execute()
+        )
         return response.data[0] if response.data else None
 
     def remove_member(self, list_id: str, user_id: str) -> bool:

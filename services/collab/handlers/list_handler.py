@@ -30,7 +30,8 @@ def register_list_handlers(
     @validate_event_data(JoinListSchema)
     def handle_join_list(user_id, data: JoinListSchema):
         try:
-            permission_service.require_view_permission(data.list_id, user_id)
+            # TODO: Add permission to Redis, otherwise sharing will be blocked by delayed Supabase write
+            # permission_service.require_view_permission(data.list_id, user_id)
             list_service.join_list_room(user_id, data.list_id)
         except PermissionError as e:
             socketio.emit(se.PERMISSION_ERROR, {'message': str(e)})

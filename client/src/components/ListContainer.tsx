@@ -231,9 +231,10 @@ export default function ListContainer({ userId }: ListContainerProps) {
           onClose={() => setIsShareModalOpen(false)}
           listId={activeListId || ''}
           listName={activeListName}
-          onShare={(targetUserId, role) =>
+          onShare={(targetUserId, role) => {
             handleShareList(activeListId, targetUserId, role)
-          }
+            setIsShareModalOpen(false)
+          }}
         />
       )}
     </div>
